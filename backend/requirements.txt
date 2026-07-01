@@ -1,0 +1,19 @@
+# Web Framework
+fastapi
+
+# ASGI Server
+uvicorn[standard]
+
+# AI / LangChain
+langchain-google-genai
+langgraph
+google-generativeai
+
+# Database ORM
+SQLAlchemy
+
+# Environment Variables
+python-dotenv
+
+# HTTP Client for external APIs
+httpx
