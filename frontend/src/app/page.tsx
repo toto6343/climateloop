@@ -93,6 +93,9 @@ interface GridState {
   margin_pct: number;
 }
 
+/** AI 해설의 출처. 백엔드 run_simulation()의 ai_source와 대응. */
+type AiSource = 'llm' | 'fallback';
+
 interface SimulationResult {
   // --- 기존 필드 ---
   carbon_emissions: number;
@@ -103,6 +106,8 @@ interface SimulationResult {
   grid_stability: string;
   weather_info: WeatherInfo;
   // --- Confidence 신규 필드 ---
+  /** ai_message 가 LLM 생성인지("llm") 결정론적 요약인지("fallback") */
+  ai_source: AiSource;
   goal: Goal;
   level: LevelState;
   factors: Factor[];          // 항상 길이 3, carbon → grid → fit 순서
@@ -129,7 +134,7 @@ const MIX_LABELS: Record<string, string> = {
   fossil: '화석연료'
 };
 
-import { Sun, Wind, Droplets, Flame, CloudRain, CloudLightning, Snowflake, ShieldAlert, Download } from 'lucide-react';
+import { Sun, Wind, Droplets, Flame, CloudRain, CloudLightning, Snowflake, ShieldAlert, Download, Sparkles, Zap } from 'lucide-react';
 
 const SOURCE_ICONS: Record<string, React.ReactNode> = {
   '태양광': <Sun className="w-4 h-4 text-orange-500" />,
@@ -322,6 +327,33 @@ function UpdatingBadge() {
     <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full shrink-0">
       <Spinner className="w-3 h-3" />
       업데이트 중
+    </span>
+  );
+}
+
+/**
+ * AI 해설의 출처 배지.
+ *
+ * LLM이 쓴 문장과 백엔드의 결정론적 요약이 같은 자리·같은 라벨로 나오면
+ * 사용자는 둘을 구분할 수 없다. 어느 쪽인지 밝히는 것이 목적이므로,
+ * 폴백을 "실패"처럼 보이게 하지 않는다 — 결정론적 요약도 그 자체로 읽을
+ * 만한 정상 산출물이라 경고색 대신 중립색(slate)을 쓴다.
+ */
+function AiSourceBadge({ source }: { source: AiSource }) {
+  const isLlm = source === 'llm';
+  return (
+    <span
+      title={isLlm
+        ? 'Gemini가 생성한 해설입니다.'
+        : '계산 결과로 만든 요약입니다. AI 호출 없이 즉시 생성됩니다.'}
+      className={`flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${
+        isLlm
+          ? 'text-blue-600 bg-blue-50 border-blue-100'
+          : 'text-slate-500 bg-slate-100 border-slate-200'
+      }`}
+    >
+      {isLlm ? <Sparkles className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
+      {isLlm ? 'AI 생성' : '즉시 요약'}
     </span>
   );
 }
@@ -986,7 +1018,11 @@ export default function Home() {
       try {
         const data = await requestCalculate(true);
         if (cancelled) return;
-        setResults(prev => (prev ? { ...prev, ai_message: data.ai_message } : data));
+        // ai_source도 함께 옮긴다. 1단계는 include_ai=false라 항상 "fallback"이므로,
+        // 이 값을 갱신하지 않으면 LLM 문장이 와도 배지가 "즉시 요약"에 머문다.
+        setResults(prev => (prev
+          ? { ...prev, ai_message: data.ai_message, ai_source: data.ai_source }
+          : data));
       } catch (error) {
         // AI 실패는 치명적이지 않다. 1단계의 결정론적 요약이 그대로 남는다.
         if (!cancelled) console.error("AI 설명 생성 실패:", error);
@@ -1183,11 +1219,14 @@ export default function Home() {
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex-grow">
             <div className="flex justify-between items-center mb-4 gap-2">
               <h2 className="text-xl font-semibold text-slate-800 shrink-0">AI 어시스턴트</h2>
-              {isAiLoading && (
+              {isAiLoading ? (
                 <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full shrink-0">
                   <Spinner className="w-3 h-3" />
                   설명 작성 중
                 </span>
+              ) : (
+                // 작성 중에는 아직 출처가 확정되지 않았으므로 로딩 배지에 자리를 내준다.
+                results?.ai_source && <AiSourceBadge source={results.ai_source} />
               )}
             </div>
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm text-blue-800 mb-4 min-h-[100px] leading-relaxed whitespace-pre-wrap">

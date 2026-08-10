@@ -618,8 +618,14 @@ async def run_simulation(mix: EnergyMix, db: Session, reuse_ai_message: str = No
     # NOTE: agent.py의 AgentState는 아직 Confidence 필드를 받지 않으므로
     #       initial_state는 기존 스키마를 그대로 유지한다. (agent.py 개선은 다음 단계)
     ai_msg = build_fallback_message(mix.region, weather, analysis)
+    # 이 문장이 LLM이 쓴 것인지 결정론적 요약인지 화면에서 구분할 수 있게 한다.
+    # 두 문장이 같은 자리·같은 라벨로 나오면 사용자는 구분할 방법이 없다.
+    # 확신이 없으면 항상 "fallback" 쪽으로 둔다 — LLM이 쓰지 않은 문장을
+    # AI 생성이라고 표기하는 쪽이 그 반대보다 나쁘기 때문이다.
+    ai_source = "fallback"
     if reuse_ai_message:
         # 이미 생성된 해설을 그대로 사용한다 (PDF 경로).
+        # 그 문장이 원래 어떻게 만들어졌는지는 여기서 알 수 없으므로 fallback 으로 둔다.
         ai_msg = reuse_ai_message
     elif mix.include_ai and not AI_DISABLED and agent_app is not None:
         try:
@@ -633,7 +639,11 @@ async def run_simulation(mix: EnergyMix, db: Session, reuse_ai_message: str = No
                 "best_source": best_source,
             }
             final_state = await agent_app.ainvoke(initial_state)
-            ai_msg = final_state.get("ai_message") or ai_msg
+            generated = final_state.get("ai_message")
+            # 호출은 됐지만 빈 응답이면 폴백 문장이 그대로 남는다. 그때는 llm 이 아니다.
+            if generated:
+                ai_msg = generated
+                ai_source = "llm"
         except Exception as e:
             print(f"Agent Error: {e}")
 
@@ -647,6 +657,8 @@ async def run_simulation(mix: EnergyMix, db: Session, reuse_ai_message: str = No
         "grid_stability": grid["label"],
         "weather_info": weather,
         # --- Confidence 신규 필드 ---
+        # ai_message 가 LLM 생성인지("llm") 결정론적 요약인지("fallback")
+        "ai_source": ai_source,
         "goal": analysis["goal"],
         "level": analysis["level"],
         "factors": analysis["factors"],
