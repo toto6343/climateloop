@@ -1,22 +1,51 @@
 import os
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from models.database import SessionLocal, EnergyEfficiency
 from dotenv import load_dotenv
-from agent import app as agent_app # LangGraph 에이전트 앱 임포트
 
 load_dotenv()
+
+# LangGraph 에이전트는 GEMINI_API_KEY가 없으면 임포트 시점에 예외를 던진다.
+# Confidence 피드백은 결정론적으로 계산되므로 AI 없이도 동작해야 한다.
+# 따라서 임포트 실패를 서버 기동 실패로 만들지 않는다.
+try:
+    from agent import app as agent_app  # LangGraph 에이전트 앱 임포트
+except Exception as agent_import_error:  # pragma: no cover
+    agent_app = None
+    print(f"[warn] AI 에이전트 비활성화: {agent_import_error}")
+
+# 환경변수로 AI 호출을 끌 수 있게 한다 (테스트/오프라인 데모용)
+AI_DISABLED = os.getenv("CLIMATELOOP_DISABLE_AI", "").lower() in ("1", "true", "yes")
+
 app = FastAPI(title="ClimateLoop API")
 
-# Configure CORS
+# CORS
+# 기존 설정은 allow_origins=["*"] + allow_credentials=True 였는데, 이 조합은 CORS 명세상
+# 무효라 브라우저가 인증정보 요청을 거부한다. 이 API는 쿠키·인증을 쓰지 않으므로
+# credentials 를 끄고, 오리진은 로컬 개발 주소로 좁힌다.
+#
+# 프론트를 다른 포트·도메인에서 띄우면 CLIMATELOOP_ALLOWED_ORIGINS 로 지정한다.
+#   예: CLIMATELOOP_ALLOWED_ORIGINS=http://localhost:3005
+DEFAULT_ALLOWED_ORIGINS = (
+    "http://localhost:3000,http://127.0.0.1:3000,"
+    "http://localhost:3001,http://127.0.0.1:3001"
+)
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CLIMATELOOP_ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 # DB Dependency

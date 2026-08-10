@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# 단, 예시 파일은 커밋한다. 이 파일이 없으면 새 환경에서 NEXT_PUBLIC_API_URL 을
+# 알 수 없어 앱이 로드되지 않는다.
+!.env.example
 
 # vercel
 .vercel

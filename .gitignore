@@ -164,3 +164,9 @@ build/
 data/*.csv
 data/*.json
 data/*.sqlite
+
+# Editor
+.vscode/
+
+# Local SQLite (seed_db.py 로 재생성 가능한 산출물)
+backend/data/*.db

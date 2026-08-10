@@ -1,19 +1,31 @@
+# 버전 고정 기준: 2026-08-03 동작 확인 환경
+# 미고정 상태에서 두 차례 장애가 있었다.
+#   1) gemini-1.5-flash 가 은퇴해 404 (모델은 agent.py 에서 관리)
+#   2) langchain-core 1.x 부터 response.content 가 str -> list 로 변경되어
+#      ai_message 가 객체 배열로 직렬화됨
+# 따라서 실제 장애를 일으킨 계열은 정확히 고정한다.
+
 # Web Framework
-fastapi
+fastapi==0.136.1
 
 # ASGI Server
-uvicorn[standard]
+uvicorn[standard]==0.38.0
 
 # AI / LangChain
-langchain-google-genai
-langgraph
-google-generativeai
+langchain-google-genai==4.2.6
+langgraph==1.2.4
+google-generativeai==0.8.6
+# 직접 임포트하지 않지만 response.content 형식을 좌우하는 전이 의존성이라 함께 고정한다
+langchain-core==1.4.7
 
 # Database ORM
 SQLAlchemy
 
+# PDF Report (2.x: output()는 bytearray 반환, add_font의 uni 인자 없음)
+fpdf2>=2.8
+
 # Environment Variables
-python-dotenv
+python-dotenv==1.2.1
 
 # HTTP Client for external APIs
 httpx
