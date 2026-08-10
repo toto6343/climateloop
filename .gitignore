@@ -170,3 +170,6 @@ data/*.sqlite
 
 # Local SQLite (seed_db.py 로 재생성 가능한 산출물)
 backend/data/*.db
+
+# 프롬프트 세션 로그
+*_session_log.md
