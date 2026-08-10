@@ -450,9 +450,16 @@ def test_calculate_keeps_legacy_fields():
     for key in ("carbon_emissions", "sustainability_score", "suitability",
                 "ai_message", "current_region", "grid_stability", "weather_info"):
         assert key in body, f"기존 필드 {key} 가 사라졌다"
+    # 라벨은 있고 비어 있지만 않으면 된다. 내용은 검증하지 않는다 —
+    # 사람이 읽는 UI 문구라 언제든 다듬을 수 있어야 하고, 여기에 문자열
+    # assert 를 걸면 문구를 고칠 때마다 테스트가 함께 깨진다.
     assert isinstance(body["grid_stability"], str)
-    # page.tsx:466 의 .split(' ')[0] 이 여전히 "안정"/"불안정" 을 얻는지
-    assert body["grid_stability"].split(" ")[0] in ("안정", "불안정")
+    assert body["grid_stability"], "라벨이 비면 화면에 표시할 것이 없다"
+
+    # 상태 판정은 문자열을 쪼개는 대신 enum 으로 확인한다.
+    assert body["grid"]["status"] in ("deficit", "stable", "surplus")
+    # 구 필드가 신 구조와 같은 값을 가리키는지만 고정한다 (문구 무관).
+    assert body["grid_stability"] == body["grid"]["label"]
 
 
 def test_calculate_returns_confidence_fields():
