@@ -1,11 +1,14 @@
+import io
 import os
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from models.database import SessionLocal, EnergyEfficiency
 from dotenv import load_dotenv
+from fpdf import FPDF
 
 load_dotenv()
 
@@ -65,6 +68,9 @@ class EnergyMix(BaseModel):
     region: str = "서울"
     weather_scenario: str = "맑음"  # 맑음, 흐림/비, 태풍, 겨울
     include_ai: bool = True  # False면 LLM 호출을 건너뛴다 (테스트/빠른 미리보기용)
+    # /generate-pdf 전용. 화면에 이미 표시 중인 AI 해설을 그대로 넘기면
+    # 리포트가 같은 문장을 다시 생성하지 않고 재사용한다 (12초 -> 0.1초).
+    ai_message: str | None = None
 
 
 WEATHER_PROFILES = {
@@ -683,3 +689,105 @@ async def confidence_levels():
              "description": "해당 지역·기상 조건의 재생에너지 잠재력과 선택한 재생 비중의 일치도"},
         ],
     }
+
+
+@app.post("/generate-pdf")
+async def generate_pdf(mix: EnergyMix, db: Session = Depends(get_db)):
+    # 프론트가 화면의 해설을 함께 보내면 그대로 싣는다.
+    # 없으면 기존대로 새로 생성한다 (하위 호환).
+    results = await run_simulation(mix, db, reuse_ai_message=mix.ai_message)
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    # 한글 폰트 추가 (NanumGothic)
+    # 폰트 파일을 backend/fonts/NanumGothic.ttf 경로에 위치시켜야 합니다.
+    # 폰트 파일은 별도로 다운로드 받아야 합니다. (예: https://hangeul.naver.com/font)
+    font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
+    has_korean_font = False
+    if os.path.exists(font_path):
+        # fpdf2에서 uni=True는 제거됨 (유니코드가 기본 동작)
+        pdf.add_font('NanumGothic', '', font_path)
+        pdf.set_font('NanumGothic', '', 16)
+        has_korean_font = True
+    else:
+        # 폰트 파일이 없을 경우 기본 폰트로 대체 (한글 깨짐)
+        pdf.set_font('Helvetica', '', 16)
+
+    def write_utf8(text):
+        if has_korean_font:
+            return text
+        # 한글 폰트가 없을 경우, ASCII로 변환 가능한 문자만 남깁니다.
+        return str(text).encode('latin-1', 'ignore').decode('latin-1')
+
+    # 제목
+    pdf.cell(0, 10, write_utf8('ClimateLoop 시뮬레이션 리포트'), 0, 1, 'C')
+    pdf.ln(10)
+
+    # 기본 정보
+    pdf.set_font_size(12)
+    pdf.cell(0, 8, write_utf8(f"지역: {results['current_region']}"), 0, 1)
+    pdf.cell(0, 8, write_utf8(f"기후 시나리오: {mix.weather_scenario} ({results['weather_info']['msg']})"), 0, 1)
+    pdf.ln(5)
+
+    # 에너지 믹스
+    pdf.set_font_size(14)
+    pdf.cell(0, 10, write_utf8('에너지 믹스'), 0, 1, 'L')
+    pdf.set_font_size(12)
+    for key in MIX_KEYS:
+        pdf.cell(0, 8, write_utf8(f"- {MIX_LABELS[key]}: {round(results['mix_used'][key])}%"), 0, 1)
+    pdf.ln(5)
+
+    # 주요 결과
+    pdf.set_font_size(14)
+    pdf.cell(0, 10, write_utf8('주요 결과'), 0, 1, 'L')
+    pdf.set_font_size(12)
+    pdf.cell(0, 8, write_utf8(f"- 탄소 배출량: {results['carbon_emissions']} gCO2/kWh"), 0, 1)
+    pdf.set_font_size(9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.multi_cell(0, 5, write_utf8(
+        f"  ※ {EMISSION_FACTOR_NOTE} "
+        f"(적용 계수: 재생·원자력 {EMISSION_FACTORS['renewable']:.0f}, 화력 {EMISSION_FACTORS['fossil']:.0f} gCO2/kWh)"))
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font_size(12)
+    pdf.cell(0, 8, write_utf8(f"- 지속 가능성 지수: {results['sustainability_score']}%"), 0, 1)
+    pdf.cell(0, 8, write_utf8(f"- 전력망 안정성: {results['grid_stability']}"), 0, 1)
+    pdf.ln(5)
+
+    # 학습 진행 상황 (Confidence)
+    goal, level = results['goal'], results['level']
+    pdf.set_font_size(14)
+    pdf.cell(0, 10, write_utf8('학습 진행 상황'), 0, 1, 'L')
+    pdf.set_font_size(12)
+    pdf.cell(0, 8, write_utf8(
+        f"- 단계: {level['current']['id']}/{level['total_levels']} {level['current']['name']}"), 0, 1)
+    if goal['achieved']:
+        pdf.cell(0, 8, write_utf8(f"- 목표 {goal['target']:.0f}점 달성 (현재 {goal['current']}점)"), 0, 1)
+    else:
+        pdf.cell(0, 8, write_utf8(
+            f"- 목표 {goal['target']:.0f}점까지 {goal['gap']}점 남음 (현재 {goal['current']}점)"), 0, 1)
+    for factor in results['factors']:
+        pdf.cell(0, 8, write_utf8(
+            f"- {factor['label']}: {factor['score']}점 ({factor['detail']})"), 0, 1)
+    if results['next_action']:
+        pdf.multi_cell(0, 8, write_utf8(f"- 다음 단계: {results['next_action']['reason']}"))
+    pdf.ln(5)
+
+    # AI 어시스턴트 메시지
+    pdf.set_font_size(14)
+    pdf.cell(0, 10, write_utf8('AI 어시스턴트 분석'), 0, 1, 'L')
+    pdf.set_font_size(11)
+    pdf.multi_cell(0, 6, write_utf8(results['ai_message']))
+
+    if not has_korean_font:
+        pdf.ln(10)
+        pdf.set_text_color(255, 0, 0)
+        pdf.set_font('Helvetica', 'B', 10)
+        pdf.multi_cell(0, 5, "[Warning] Korean font not found. Some characters may be broken. "
+                             "Please install 'NanumGothic.ttf' in the 'backend/fonts' directory.")
+
+    # fpdf2는 output()이 bytearray를 반환한다 (구 PyFPDF의 dest='S'는 제거됨)
+    pdf_bytes = bytes(pdf.output())
+
+    return StreamingResponse(io.BytesIO(pdf_bytes), media_type='application/pdf',
+                             headers={'Content-Disposition': 'attachment; filename=climateloop_report.pdf'})
