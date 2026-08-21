@@ -19,15 +19,40 @@ os.environ["CLIMATELOOP_DISABLE_AI"] = "1"
 
 import main  # noqa: E402
 from main import (  # noqa: E402
-    CARBON_BEST, CARBON_WORST, FACTOR_WEIGHTS, GOAL_TARGET, GRID_RANK, MIX_KEYS,
-    PROGRESS_LEVELS, PROJECTION_STEPS, WEATHER_PROFILES, analyze, build_projection,
-    composite_score, evaluate_goal, evaluate_level, normalize_mix, redistribute,
+    CARBON_BEST, CARBON_WORST, EFF_KEYS, FACTOR_WEIGHTS, GOAL_TARGET, GRID_RANK,
+    HYDRO_BASE_INDEX, MIX_KEYS, REGION_FACTOR_AVERAGE,
+    GENERATION_SCALE, PROGRESS_LEVELS, PROJECTION_STEPS, WEATHER_PROFILES, analyze,
+    build_grid, build_projection, build_scenario_comparison, build_suitability_basis, composite_score,
+    estimate_generation, evaluate_goal, evaluate_level, normalize_mix, redistribute,
     score_factors, simulate,
 )
 
-SEOUL = {"solar": 0.95, "wind": 0.40, "hydro": 0.20, "thermal": 1.30}
-JEONNAM = {"solar": 1.55, "wind": 1.60, "hydro": 0.60, "thermal": 0.60}
-JEJU = {"solar": 1.45, "wind": 2.40, "hydro": 0.10, "thermal": 0.40}
+def _seeded_factors(region: str) -> dict:
+    """DB 에 적재된 그 지역의 계수 4개.
+
+    값을 여기 하드코딩해 두었더니 계수의 출처가 바뀔 때마다 테스트가 함께 썩었다
+    (화력이 내장 표 → EPSIS 설비용량으로 바뀌면서 제주 0.40 → 0.71). 이 테스트들이
+    검증하려는 것은 "엔드포인트가 산출식과 같은 값을 내놓는가"이고 계수 자체의
+    값이 아니다. 그러니 계수는 화면과 같은 곳에서 읽어 온다 — 그러면 seed 를
+    다시 돌려 값이 바뀌어도 이 파일은 고칠 필요가 없다.
+    """
+    import sqlite3
+    conn = sqlite3.connect(os.path.join(BACKEND_DIR, "data", "climateloop.db"))
+    try:
+        rows = conn.execute(
+            "SELECT source, efficiency_score FROM energy_efficiency WHERE region = ?",
+            (region,),
+        ).fetchall()
+    finally:
+        conn.close()
+    factors = {source: score for source, score in rows}
+    assert set(factors) == set(EFF_KEYS), f"{region} 계수가 모자랍니다: {sorted(factors)}"
+    return factors
+
+
+SEOUL = _seeded_factors("서울")
+JEONNAM = _seeded_factors("전남")
+JEJU = _seeded_factors("제주")
 CLEAR = WEATHER_PROFILES["맑음"]
 TYPHOON = WEATHER_PROFILES["태풍"]
 
@@ -41,16 +66,193 @@ def mix(renewable, nuclear, fossil):
 # ---------------------------------------------------------------------------
 
 def test_simulate_matches_legacy_formula():
-    """기존 /calculate 계산식과 동일한 값을 내는지 (하위 호환)."""
+    """적합도·수요·계획 배출강도는 기존 계산식 그대로인지 (하위 호환).
+
+    carbon 은 기상까지 반영하도록 확장됐으므로 여기서 검증하지 않는다.
+    기존 공식은 carbon_planned 로 이름을 얻어 남아 있다.
+    """
     m = mix(33.3, 33.3, 33.4)
     sim = simulate(m, SEOUL, CLEAR)
 
-    expected_carbon = (33.3 * 12 + 33.3 * 12 + 33.4 * 650) / 100
-    assert abs(sim["carbon"] - expected_carbon) < 1e-9
-    assert abs(sim["final_solar"] - 33.3 * 0.95 * 1.2) < 1e-9
+    expected_planned = (33.3 * 12 + 33.3 * 12 + 33.4 * 650) / 100
+    assert abs(sim["carbon_planned"] - expected_planned) < 1e-9
+    # 계수는 SEOUL 픽스처(=DB 적재값)에서 가져온다. 숫자를 박아 두면 계수 출처가
+    # 바뀔 때 식이 아니라 값 때문에 깨진다 — 이 테스트가 지키는 것은 식의 모양이다.
+    assert abs(sim["final_solar"] - 33.3 * SEOUL["solar"] * CLEAR["solar_mult"]) < 1e-9
     assert abs(sim["demand"] - 100.0) < 1e-9
     assert set(sim["suitability"]) == {"태양광", "풍력", "수력", "화력"}
     assert all(v <= 100 for v in sim["suitability"].values())
+
+
+# ---------------------------------------------------------------------------
+# 기상 → 적합도 → 배출량 파이프라인
+#
+# 배출강도가 믹스만 보고 계산되던 동안에는 기후 시나리오를 바꿔도 탄소 수치가
+# 꼼짝하지 않았다. 아래 테스트들이 그 연결을 고정한다.
+# ---------------------------------------------------------------------------
+
+def test_carbon_follows_the_delivered_generation_mix():
+    """배출강도 = 실제 발전 구성의 가중평균 (계획 비중이 아니라)."""
+    m = mix(33.3, 33.3, 33.4)
+    sim = simulate(m, SEOUL, TYPHOON)
+
+    delivered = sim["delivered"]
+    expected = (delivered["renewable"] * 12 + delivered["nuclear"] * 12
+                + delivered["fossil"] * 650) / sum(delivered.values())
+
+    assert abs(sim["carbon"] - expected) < 1e-9
+    # 합계는 기존 production 식과 같은 값이어야 한다 (전력망 판정과 같은 벡터)
+    assert abs(sum(delivered.values()) - sim["production"]) < 1e-9
+
+
+def test_weather_changes_carbon_with_the_mix_held_fixed():
+    """같은 믹스인데 기후 시나리오만 바꾸면 배출강도가 달라져야 한다."""
+    m = mix(50, 25, 25)
+    carbons = {name: simulate(m, JEONNAM, profile)["carbon"]
+               for name, profile in WEATHER_PROFILES.items()}
+
+    assert len(set(round(c, 3) for c in carbons.values())) > 1, (
+        f"기후를 바꿨는데 배출량이 전부 같다: {carbons}")
+    # 태풍은 풍력이 멈추고 태양광도 10%만 남는다 → 인도 전력에서 화력 비중이 올라간다
+    assert carbons["태풍"] > carbons["맑음"], carbons
+
+
+def test_carbon_stays_within_factor_bounds_everywhere():
+    """가중평균이므로 어떤 조합에서도 계수 범위를 벗어나지 않는다.
+
+    벗어나면 carbon_score 가 0~100 밖으로 나가 점수 체계가 깨진다.
+    """
+    for eff in (SEOUL, JEONNAM, JEJU):
+        for weather in WEATHER_PROFILES.values():
+            for fossil in range(0, 101, 10):
+                for nuclear in range(0, 101 - fossil, 10):
+                    m = mix(100 - fossil - nuclear, nuclear, fossil)
+                    carbon = simulate(m, eff, weather)["carbon"]
+                    assert CARBON_BEST - 1e-9 <= carbon <= CARBON_WORST + 1e-9, (m, carbon)
+
+
+def test_carbon_free_mix_stays_clean_in_every_weather():
+    """무탄소 100%면 기상이 어떻든 배출강도는 최저값이다.
+
+    태풍에 재생 100%면 전력이 모자라지만, 인도된 전력 자체는 깨끗하다.
+    부족분은 grid 요인이 벌점으로 다룬다 — 두 관심사를 섞지 않는다.
+    """
+    for weather in WEATHER_PROFILES.values():
+        for m in (mix(100, 0, 0), mix(0, 100, 0), mix(50, 50, 0)):
+            assert abs(simulate(m, JEJU, weather)["carbon"] - CARBON_BEST) < 1e-9, (m, weather)
+
+
+def test_scenario_comparison_covers_every_scenario_once():
+    rows = build_scenario_comparison(mix(40, 30, 30), SEOUL, "태풍")
+
+    assert [r["scenario"] for r in rows] == list(WEATHER_PROFILES)
+    assert sum(r["is_current"] for r in rows) == 1
+    assert next(r for r in rows if r["is_current"])["scenario"] == "태풍"
+    for row in rows:
+        assert row["grid_status"] in GRID_RANK
+        assert CARBON_BEST - 1e-9 <= row["carbon_emissions"] <= CARBON_WORST + 1e-9
+
+
+def test_scenario_comparison_current_row_matches_headline_number():
+    """강조된 막대와 화면 대표 수치가 어긋나면 비교 그래프가 거짓말을 한다."""
+    client = _client()
+    for region, scenario in (("서울", "맑음"), ("전남", "태풍"), ("제주", "겨울"), ("충남", "흐림/비")):
+        body = client.post("/calculate", json={
+            "renewable": 45, "nuclear": 25, "fossil": 30,
+            "region": region, "weather_scenario": scenario, "include_ai": False,
+        }).json()
+
+        current = next(r for r in body["carbon_by_scenario"] if r["is_current"])
+        assert current["scenario"] == scenario
+        assert current["carbon_emissions"] == body["carbon_emissions"], (region, scenario)
+        assert body["projection"][0]["carbon_emissions"] == body["carbon_emissions"]
+
+
+def test_scenario_comparison_marks_fallback_scenario_as_current():
+    """알 수 없는 시나리오는 맑음으로 떨어지고, 강조도 맑음에 붙어야 한다."""
+    body = _client().post("/calculate", json={
+        "renewable": 40, "nuclear": 30, "fossil": 30,
+        "weather_scenario": "폭염주의보", "include_ai": False,
+    }).json()
+
+    current = next(r for r in body["carbon_by_scenario"] if r["is_current"])
+    assert current["scenario"] == "맑음"
+    assert current["carbon_emissions"] == body["carbon_emissions"]
+
+
+def test_scenario_comparison_holds_the_mix_fixed():
+    """비교의 전제는 '믹스 고정'이다. 계획 배출강도는 네 행에서 모두 같다."""
+    m = mix(60, 20, 20)
+    planned = {name: simulate(m, JEONNAM, profile)["carbon_planned"]
+               for name in WEATHER_PROFILES
+               for profile in [WEATHER_PROFILES[name]]}
+    assert len(set(round(v, 9) for v in planned.values())) == 1
+
+
+def test_calculate_exposes_planned_carbon_for_the_connector_line():
+    body = _client().post("/calculate", json={
+        "renewable": 60, "nuclear": 20, "fossil": 20,
+        "region": "전남", "weather_scenario": "태풍", "include_ai": False,
+    }).json()
+
+    expected_planned = (60 * 12 + 20 * 12 + 20 * 650) / 100
+    assert abs(body["carbon_planned"] - expected_planned) < 0.01
+    # 태풍이라 실제 배출강도는 계획보다 높다
+    assert body["carbon_emissions"] > body["carbon_planned"]
+
+
+def test_suitability_basis_reproduces_every_suitability_value():
+    """화면의 "선정 근거" 토글이 적합도 계산을 그대로 재현할 수 있어야 한다.
+
+    토글은 적합도 숫자를 서술만 하지 않고 `화석연료 35% × 서울 화력 계수 1.30 = 45`
+    처럼 식을 펼쳐 보여준다. 그 식이 옆의 값과 어긋나면 근거가 근거를 반박하는
+    화면이 되므로, 응답의 재료(suitability_basis)와 믹스·기상 배수만으로 네 값이
+    모두 복원되는지 고정한다.
+    """
+    body = _client().post("/calculate", json={
+        "renewable": 40, "nuclear": 25, "fossil": 35,
+        "region": "서울", "weather_scenario": "겨울", "include_ai": False,
+    }).json()
+
+    basis = body["suitability_basis"]
+    region_factors = basis["region_factors"]
+    mix_used, weather, suitability = body["mix_used"], body["weather_info"], body["suitability"]
+
+    expected = {
+        "태양광": mix_used["renewable"] * region_factors["solar"] * weather["solar_mult"],
+        "풍력": mix_used["renewable"] * region_factors["wind"] * weather["wind_mult"],
+        # 수력만 믹스·기상과 무관한 고정 지수다
+        "수력": basis["hydro_base_index"] * region_factors["hydro"],
+        "화력": mix_used["fossil"] * region_factors["thermal"],
+    }
+    for source, raw in expected.items():
+        assert abs(suitability[source] - min(100.0, raw)) < 0.05, source
+
+
+def test_suitability_basis_falls_back_to_national_average():
+    """계수가 없는 지역이 와도 프론트가 결측을 다루지 않게 평균으로 채운다."""
+    basis = build_suitability_basis({})
+    assert basis["region_factors"] == {key: REGION_FACTOR_AVERAGE for key in EFF_KEYS}
+    assert basis["hydro_base_index"] == HYDRO_BASE_INDEX
+
+
+def test_hydro_index_stays_at_the_legacy_constant():
+    """수력 기준 지수는 이름만 얻었고 값은 종전(45)과 같아야 한다."""
+    assert HYDRO_BASE_INDEX == 45.0
+    sim = simulate(mix(33.3, 33.3, 33.4), SEOUL, CLEAR)
+    assert abs(sim["suitability"]["수력"] - 45.0 * SEOUL["hydro"]) < 1e-9
+
+
+def test_carbon_factor_detail_explains_the_weather_effect():
+    """왜 이 점수인가요 카드가 기상 영향을 설명할 수 있어야 한다."""
+    m = mix(60, 20, 20)
+    factors = score_factors(simulate(m, JEONNAM, TYPHOON), m, JEONNAM, TYPHOON, "전남")
+    detail = next(f for f in factors if f["key"] == "carbon")["detail"]
+    assert "믹스 자체는" in detail
+
+    calm = score_factors(simulate(m, JEONNAM, CLEAR), m, JEONNAM, CLEAR, "전남")
+    calm_detail = next(f for f in calm if f["key"] == "carbon")["detail"]
+    assert "gCO2/kWh" in calm_detail
 
 
 def test_carbon_factor_spans_full_range():
@@ -104,13 +306,27 @@ def test_regional_fit_rewards_matching_region():
 
 
 def test_typhoon_hurts_grid_when_renewable_heavy():
-    """태풍(풍력 정지)에 재생 편중이면 전력망 점수가 떨어진다."""
-    m = mix(90, 5, 5)
-    clear_grid = next(f for f in score_factors(simulate(m, JEONNAM, CLEAR), m, JEONNAM, CLEAR, "전남")
+    """태풍(풍력 정지)에 재생 편중이면 전력망 점수가 떨어진다.
+
+    재생 60% 를 쓴다(전에는 90% 였다). 지역 계수가 공표 설비용량 기반으로 바뀌면서
+    전남의 태양광·풍력 계수가 2.00 / 1.95 로 올라, 재생 70% 이상에서는 **맑음 쪽이
+    이미 공급 과잉 상한에 걸려** 점수가 0 이 된다(마진 +82). 그 상태에서 태풍(0)과
+    비교하면 "떨어졌다"가 아니라 "두 극단이 같다"를 확인하는 셈이 된다.
+    60% 는 맑음이 아직 정상 범위(19.0)에 있어 태풍의 하락이 점수로 드러난다.
+
+    공급 마진도 함께 본다. 점수는 상·하한에 걸리면 정보를 잃지만 마진은 그렇지
+    않으므로, 계수가 또 바뀌어도 "태풍이 공급을 깎는다"는 인과는 이쪽이 지킨다.
+    """
+    m = mix(60, 20, 20)
+    clear_sim = simulate(m, JEONNAM, CLEAR)
+    typhoon_sim = simulate(m, JEONNAM, TYPHOON)
+
+    clear_grid = next(f for f in score_factors(clear_sim, m, JEONNAM, CLEAR, "전남")
                       if f["key"] == "grid")
-    typhoon_grid = next(f for f in score_factors(simulate(m, JEONNAM, TYPHOON), m, JEONNAM, TYPHOON, "전남")
+    typhoon_grid = next(f for f in score_factors(typhoon_sim, m, JEONNAM, TYPHOON, "전남")
                         if f["key"] == "grid")
     assert typhoon_grid["score"] < clear_grid["score"]
+    assert build_grid(typhoon_sim)["margin"] < build_grid(clear_sim)["margin"]
 
 
 def test_penalty_and_contribution_add_up():
@@ -523,6 +739,112 @@ def test_confidence_levels_endpoint():
 
 def test_carbon_constants_are_consistent():
     assert CARBON_BEST < CARBON_WORST
+
+
+# ---------------------------------------------------------------------------
+# /regions — 지도 마커 크기·원형 차트의 데이터 원본 (추정 발전량)
+# ---------------------------------------------------------------------------
+
+def test_estimate_generation_follows_the_documented_formula():
+    """산출식이 문서(README·note 필드)와 어긋나면 면책 문구가 거짓말이 된다.
+
+    계수는 JEJU 픽스처(=DB 적재값)에서 가져온다. 여기 숫자를 박아 두면 계수의
+    출처가 바뀔 때 식이 아니라 값 때문에 테스트가 깨진다 — 이 테스트가 지키려는
+    것은 "곱셈의 항이 문서와 같은가"이고 계수가 얼마인가가 아니다.
+    """
+    got = estimate_generation(mix(40, 30, 30), JEJU, CLEAR)
+
+    renewable_share, fossil_share = 0.40, 0.30
+    assert abs(got["태양광"] - JEJU["solar"] * CLEAR["solar_mult"]
+               * renewable_share * GENERATION_SCALE["태양광"]) < 1e-9
+    assert abs(got["풍력"] - JEJU["wind"] * CLEAR["wind_mult"]
+               * renewable_share * GENERATION_SCALE["풍력"]) < 1e-9
+    # 수력만 기상 배수가 없다 — 이 비대칭이 식의 핵심이라 그대로 검증한다.
+    assert abs(got["수력"] - JEJU["hydro"]
+               * renewable_share * GENERATION_SCALE["수력"]) < 1e-9
+    assert abs(got["화력"] - JEJU["thermal"]
+               * fossil_share * GENERATION_SCALE["화력"]) < 1e-9
+
+
+def test_estimate_generation_is_not_capped_at_100():
+    """suitability의 0~100 상한을 물려받으면 잠재력 큰 지역이 눌려 보인다."""
+    got = estimate_generation(mix(100, 0, 0), JEJU, CLEAR)
+    assert got["풍력"] > 100
+
+
+def test_estimate_generation_zero_when_source_share_is_zero():
+    """재생 0%면 재생 3종이, 화석 0%면 화력이 0이어야 한다."""
+    no_renewable = estimate_generation(mix(0, 50, 50), JEONNAM, CLEAR)
+    assert no_renewable["태양광"] == 0.0
+    assert no_renewable["풍력"] == 0.0
+    assert no_renewable["수력"] == 0.0, "재생 0%인데 수력이 돌아가면 앞뒤가 맞지 않는다"
+    assert no_renewable["화력"] > 0
+
+    no_fossil = estimate_generation(mix(50, 50, 0), JEONNAM, CLEAR)
+    assert no_fossil["화력"] == 0.0
+
+
+def test_regions_endpoint_covers_all_seeded_regions():
+    body = _client().post("/regions", json={
+        "renewable": 40, "nuclear": 30, "fossil": 30, "weather_scenario": "맑음",
+    }).json()
+
+    names = [r["name"] for r in body["regions"]]
+    assert len(names) == len(set(names)), "지역이 중복되면 지도에 마커가 겹쳐 그려진다"
+    # seed_db.py 가 적재한 17개 시·도
+    assert len(names) == 17
+    assert {"서울", "전남", "제주"} <= set(names)
+
+
+def test_regions_total_is_sum_of_its_sources():
+    """마커 크기(total)와 원형 차트(sources)가 같은 값을 말해야 한다."""
+    body = _client().post("/regions", json={
+        "renewable": 40, "nuclear": 30, "fossil": 30, "weather_scenario": "맑음",
+    }).json()
+
+    for region in body["regions"]:
+        assert abs(region["total_generation"] - sum(region["sources"].values())) < 0.5
+        assert region["total_generation"] > 0
+
+
+def test_regions_matches_the_pure_function():
+    """엔드포인트가 estimate_generation() 을 그대로 내보내는지 확인한다.
+
+    화면(마커 크기·원형 차트)이 읽는 값과 테스트가 검증하는 산출식이 같은
+    함수에서 나와야, 위의 공식 검증이 실제 응답에 대한 보장이 된다.
+    """
+    body = {"renewable": 40, "nuclear": 30, "fossil": 30, "weather_scenario": "겨울"}
+    regions = {r["name"]: r for r in _client().post("/regions", json=body).json()["regions"]}
+
+    expected = estimate_generation(mix(40, 30, 30), JEJU, WEATHER_PROFILES["겨울"])
+    for source, value in expected.items():
+        assert abs(regions["제주"]["sources"][source] - value) < 0.05, source
+
+
+def test_regions_declares_its_unit_and_disclaimer():
+    """면책 표기가 응답에서 사라지면 이 값이 통계로 오인된다."""
+    body = _client().post("/regions", json={
+        "renewable": 40, "nuclear": 30, "fossil": 30,
+    }).json()
+
+    assert "추정" in body["unit"]
+    assert "MWh" in body["unit"]
+    assert "실제 발전량 통계가 아닌" in body["note"]
+    # 검증하는 쪽이 값을 눈으로 확인할 수 있어야 한다
+    assert body["scale"]["values"] == GENERATION_SCALE
+
+
+def test_regions_reacts_to_weather():
+    """태풍이면 풍력이 멈춘다 — 마커 크기가 기상 시나리오를 따라와야 한다."""
+    client = _client()
+    base = {"renewable": 60, "nuclear": 20, "fossil": 20}
+    clear = {r["name"]: r for r in client.post(
+        "/regions", json={**base, "weather_scenario": "맑음"}).json()["regions"]}
+    typhoon = {r["name"]: r for r in client.post(
+        "/regions", json={**base, "weather_scenario": "태풍"}).json()["regions"]}
+
+    assert typhoon["제주"]["sources"]["풍력"] == 0.0
+    assert typhoon["제주"]["total_generation"] < clear["제주"]["total_generation"]
 
 
 # ---------------------------------------------------------------------------

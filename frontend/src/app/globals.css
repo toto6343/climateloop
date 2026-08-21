@@ -8,8 +8,84 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-app-sans);
+  --font-mono: var(--font-app-mono);
+}
+
+/*
+ * 본문 글꼴 — Pretendard 우선, 없으면 각 OS 의 한글 UI 글꼴.
+ *
+ * 웹폰트로 내려받지 않고 "설치돼 있으면 쓴다"로 둔다. Pretendard 는 Google Fonts 에
+ * 없어서 CDN 을 하나 더 물어야 하는데, 이 화면의 글자는 대부분 11~13px 짜리 라벨과
+ * 숫자다 — 그 크기에서 본문 글꼴 하나를 위해 폰트 요청을 추가할 만한 차이가 나지
+ * 않는다. 대신 각 OS 의 한글 UI 글꼴을 순서대로 적어, 어디서 열어도 한글이 시스템
+ * 기본값(윈도우의 굴림 등)으로 떨어지지 않게 한다.
+ *
+ * Arial/Helvetica 를 맨 앞에 두던 종전 규칙은 걷어냈다. 둘 다 한글 글리프가 없어서
+ * 화면 글자 대부분이 실제로는 뒤쪽 폴백으로 그려졌고, 그 폴백이 무엇인지는 규칙에
+ * 적혀 있지 않았다 — 한글 렌더링이 브라우저·OS 마다 달라지던 원인이다.
+ */
+@theme {
+  --font-app-sans:
+    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR',
+    system-ui, sans-serif;
+
+  /*
+   * 고정폭은 화면 어디에도 쓰이지 않는다(숫자 정렬은 tabular-nums 로 하고, 글꼴은
+   * 본문과 같은 것을 쓴다). 토큰만 시스템 스택으로 남겨 둔다 — font-mono 유틸리티가
+   * 나중에 붙어도 정의되지 않은 변수를 가리키지 않도록.
+   */
+  --font-app-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
+}
+
+/*
+ * ClimateLoop 브랜드 색 — 딱 한 계열.
+ *
+ * 쓰는 곳은 "누를 수 있는 것"과 "지금 고른 것"뿐이다: 주요 버튼, 선택된 탭,
+ * 진행 게이지, 링크, 포커스 링. 그 밖의 장식(카드 배경, 배지 바탕, 강조 박스)은
+ * 전부 무채색으로 두고 색을 쓰지 않는다.
+ *
+ * 데이터 색과는 역할이 갈린다 — 발전원 색(energySources.ts SOURCE_COLORS)과
+ * 믹스 3축 색(simulationTypes.ts MIX_COLORS), 요인 신호등(good/warn/bad)은
+ * 값을 나타내므로 그대로 둔다. 브랜드 색은 값을 나타내지 않는다.
+ *
+ * 인디고를 고른 이유: 앞서 브랜드는 짙은 녹색이었는데, 재생에너지 데이터 색(#22c55e)과
+ * 같은 색상 계열이어서 "시뮬레이션 요약" 카드의 재생에너지 줄에서 데이터 점(초록)과
+ * 슬라이더 손잡이(브랜드 초록)가 한 줄에 나란히 놓였다. 색상 자체를 데이터 팔레트가
+ * 쓰지 않는 쪽으로 옮겨 그 겹침을 없앤다.
+ *
+ * 데이터 팔레트가 인디고~그린 한 축으로 다시 칠해지면서(SOURCE_COLORS/MIX_COLORS)
+ * "브랜드 색만 인디고"라는 종전 분리는 더 이상 색상만으로는 서지 않는다. 대신
+ * **명도와 자리**로 가른다: 브랜드는 brand-600(#4338ca) 한 단계만 쓰고, 데이터 램프는
+ * 그보다 밝은 쪽(#6366f1 이상)과 훨씬 어두운 쪽(#312e81 이하)에만 값을 둔다. 조작기
+ * 손잡이와 데이터 점이 한 줄에 놓여도 중간 명도의 브랜드 인디고는 램프의 어느 칸과도
+ * 겹치지 않는다.
+ */
+@theme {
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-600: #4338ca;
+  --color-brand-700: #3730a3;
+  --color-brand-800: #312e81;
+}
+
+/*
+ * 카드의 그림자 — 이 한 종류가 전부다.
+ *
+ * 예전에는 카드를 전부 1px 테두리(border-slate-200)로 떼어 놓았다. 화면에 카드가
+ * 스무 장 가까이 되면서 그 선들이 격자처럼 쌓여, 정작 봐야 할 값보다 상자의 윤곽이
+ * 먼저 읽혔다. 이제 평범한 카드는 테두리 없이 이 그림자 하나로만 바닥에서 떠 있고,
+ * 테두리는 **강조할 카드에만** 남긴다 — 선이 드물어졌으므로 선이 있는 곳이 곧 강조다.
+ *
+ * 한 겹짜리 얕은 그림자인 것이 중요하다. 두세 겹을 포개면 카드가 두꺼워 보이고,
+ * 카드 안에 또 카드가 들어가는 이 레이아웃에서는 그 두께가 중첩돼 지저분해진다.
+ */
+@theme {
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +98,115 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-app-sans);
 }
+
+/*
+ * 숫자 입력창의 스피너(위/아래 화살표) 제거.
+ *
+ * 브라우저가 number 입력칸에 붙여 주는 이 화살표는 화면에서 정렬이나 스크롤
+ * 컨트롤처럼 읽혀 오해를 준다는 피드백을 받았다. 에너지 믹스 % 입력칸이 그 통로였고
+ * 지금은 그 칸 자체가 없어졌지만(조정은 슬라이더 한 곳에서만 한다), 나중에 number
+ * 입력이 다시 생겨도 같은 오해가 되살아나지 않도록 규칙은 남겨 둔다.
+ */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/*
+ * 지도에서 선택된 지역의 상시 라벨.
+ *
+ * Leaflet 툴팁은 기본이 흰 바탕 + 회색 테두리라, 항상 떠 있는 이 라벨이
+ * hover 로 잠깐 뜨는 다른 지역 라벨과 구분되지 않는다. 선택 마커·선택 칩과
+ * 같은 파랑(blue-600)을 입혀 셋이 한 가지를 가리키고 있음을 보이게 한다.
+ * 클래스는 MapComponent 의 permanent 툴팁에만 붙는다.
+ */
+.leaflet-tooltip.climateloop-tooltip-selected {
+  background: #4338ca;
+  border-color: #4338ca;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 0.3);
+}
+
+/* 툴팁 꼬리(삼각형)도 같은 색이라야 말풍선이 끊겨 보이지 않는다. */
+.leaflet-tooltip.climateloop-tooltip-selected.leaflet-tooltip-top::before {
+  border-top-color: #4338ca;
+}
+
+/* 선택 라벨 안의 발전량 보조 문구는 파란 바탕 위에서 회색이 읽히지 않는다. */
+.leaflet-tooltip.climateloop-tooltip-selected .text-slate-500 {
+  color: #dbeafe;
+}
+
+/*
+ * 지도 마커는 표시 전용이다.
+ *
+ * 지역 선택이 select box 하나로 모이면서 마커 클릭 핸들러를 걷어냈지만, hover 라벨이
+ * Leaflet 의 마우스 이벤트 위에 얹혀 있어 마커 자체는 interactive 로 남겨야 한다.
+ * 그러면 Leaflet 이 .leaflet-interactive 에 손가락 커서를 씌워, 눌러도 아무 일이
+ * 일어나지 않는 원이 눌리는 것처럼 보인다. 커서만 되돌린다.
+ */
+.leaflet-interactive.climateloop-marker-static {
+  cursor: default;
+}
+
+/*
+ * 브라우저 기본 스크롤바를 완전히 숨긴다.
+ *
+ * 윈도우 크롬은 스크롤바 트랙 양 끝에 위/아래(좌/우) 화살표 버튼을 그리는데,
+ * 이게 "기후 시나리오" 탭 옆의 UI 컨트롤처럼 오해를 샀다. 화살표만 지우는
+ * 절충안 대신 스크롤바 자체를 안 보이게 한다 — 스크롤(휠·트랙패드·키보드)
+ * 동작은 그대로 유지되고, 시각적으로만 사라진다.
+ */
+::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* 구형 Edge/IE, 참고용 */
+}
+
+/*
+ * AI 어시스턴트 플로팅 패널의 등장 애니메이션.
+ *
+ * 아래(버튼이 있는 쪽)에서 위로 올라오며 나타난다 — 어디서 열렸는지가 움직임에
+ * 남아, 화면 한복판에 갑자기 뜨는 창과 달리 누른 버튼과 패널이 한 물건으로 읽힌다.
+ * transform-origin 은 요소 쪽에서 origin-bottom-right 로 준다.
+ *
+ * Tailwind 유틸리티(animate-[...])로 이 이름을 참조하고, motion-safe: 를 붙여
+ * "동작 줄이기"를 켠 사용자에게는 애니메이션 없이 그대로 나타나게 한다.
+ */
+@keyframes climateloop-fab-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/*
+ * 지도 저작자 표시(Leaflet attribution).
+ *
+ * 지도 칸이 좁아지면서 "© OpenStreetMap contributors" 가 두 줄로 접히고, 둘째
+ * 줄이 둥근 지도 상자 밖 흰 여백으로 흘러나왔다. 상자에 overflow:hidden 을 걸면
+ * 선택 지역의 상시 툴팁까지 함께 잘리므로, 글자 크기만 한 단계 내려 한 줄에
+ * 들어가게 한다 — 표시 의무가 있는 문구 자체는 그대로 남는다.
+ */
+.leaflet-container .leaflet-control-attribution {
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 0 4px;
+}
+

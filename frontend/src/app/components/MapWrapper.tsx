@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import type { RegionStat } from './energySources';
 
 const MapComponent = dynamic(() => import('./MapComponent'), {
   ssr: false,
@@ -11,12 +12,12 @@ const MapComponent = dynamic(() => import('./MapComponent'), {
   ),
 });
 
-export default function MapWrapper({ 
-  selectedRegion, 
-  onRegionChange 
-}: { 
-  selectedRegion: string, 
-  onRegionChange: (name: string) => void 
+export default function MapWrapper({
+  selectedRegion,
+  regions,
+}: {
+  selectedRegion: string,
+  regions?: RegionStat[],
 }) {
-  return <MapComponent selectedRegion={selectedRegion} onRegionChange={onRegionChange} />;
+  return <MapComponent selectedRegion={selectedRegion} regions={regions} />;
 }

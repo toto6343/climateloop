@@ -116,7 +116,18 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+#
+# .env 만 적으면 정확히 그 이름만 걸린다 — backend/.env.local 이나 .env.production
+# 같은 변형은 빠져나간다. 접미사가 붙은 것까지 함께 막고, 커밋해야 하는 예시
+# 파일만 되살린다. frontend/ 는 자체 .gitignore 에서 같은 일을 한다.
 .env
+.env.*
+!.env.example
+
+# 확장자 앞 점을 빼먹은 사본. 실제로 frontend/env.local 이 그렇게 생겼다 —
+# 내용은 예시 파일과 같지만, 이 이름으로 진짜 값을 적어 두면 그대로 커밋된다.
+env.local
+env.*.local
 .venv
 env/
 venv/
@@ -161,15 +172,54 @@ out/
 build/
 
 # Data
+#
+# 아래 세 줄은 슬래시가 들어 있어 **저장소 루트의 data/ 만** 가리킨다
+# (gitignore 규칙: 패턴에 / 가 있으면 그 .gitignore 위치에 고정된다).
+# backend/data/ 는 여기 걸리지 않는다 — 그쪽은 아래 절에서 따로 다룬다.
 data/*.csv
 data/*.json
 data/*.sqlite
 
-# Editor
+# Editor / OS / 도구 로컬 파일
 .vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
 
-# Local SQLite (seed_db.py 로 재생성 가능한 산출물)
+# Claude Code 로컬 설치본(스킬·설정). 개발 도구 상태이지 프로젝트 소스가 아니다.
+.claude/
+
+# ---------------------------------------------------------------------------
+# backend/data/ — 무엇이 산출물이고 무엇이 원본인가
+#
+# 이 디렉터리에는 성격이 정반대인 두 종류가 섞여 있다.
+#
+#   산출물  climateloop.db, coefficient_source.json
+#           seed_db.py 를 돌리면 다시 만들어진다. 커밋하지 않는다.
+#
+#   원본    kea_renewable_by_region_2024.csv, kpx_capacity_by_region_2025.csv
+#           공공데이터포털에서 받은 설비용량 스냅샷이고, seed_db.py 의 입력이다.
+#           **반드시 커밋해야 한다** — 이 파일이 없으면 시드가 내장 추정표로
+#           떨어져(origin="builtin") 화면의 지역 계수가 출처 없는 값이 된다.
+#           두 파일 모두 "이용허락범위 제한 없음" 이라 재배포에 제약이 없다.
+# ---------------------------------------------------------------------------
+
+# 산출물 — seed_db.py 로 재생성 가능
 backend/data/*.db
+# 계수 출처 기록 — 위 DB 와 같은 seed 실행에서 함께 나오는 산출물이다.
+# DB 는 무시하면서 이 기록만 커밋하면 둘이 어긋난 상태가 리포지토리에 남는다.
+backend/data/coefficient_source.json
+
+# 원본 스냅샷 — 명시적으로 되살린다.
+#
+# 지금은 위 "# Data" 절의 data/*.csv 가 루트 기준이라 이 두 파일에 닿지 않는다.
+# 그래도 negation 을 적어 두는 이유: 누군가 그 패턴을 **/data/*.csv 처럼 "고치면"
+# 스냅샷이 조용히 커밋 대상에서 빠지고, 그 사실은 새로 clone 한 사람이 화면의
+# 계수가 전부 1.0 인 것을 볼 때까지 드러나지 않는다. 여기 한 줄이 그 사고를 막는다.
+!backend/data/kea_renewable_by_region_2024.csv
+!backend/data/kpx_capacity_by_region_2025.csv
 
 # 프롬프트 세션 로그
 *_session_log.md
