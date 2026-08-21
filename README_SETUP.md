@@ -110,6 +110,7 @@ http://localhost:3000 을 엽니다. **백엔드가 먼저 떠 있어야 합니�
 | `OPENROUTER_MODEL` | 아니오 | `google/gemini-2.5-flash-lite` |
 | `CLIMATELOOP_DISABLE_AI` | 아니오 | `1`이면 OpenRouter 를 아예 호출하지 않습니다. 테스트는 항상 이 모드로 돌립니다 |
 | `CLIMATELOOP_ALLOWED_ORIGINS` | 아니오 | localhost·127.0.0.1 의 3000·3001 포트만 허용합니다. **외부 도메인에 배포하면 반드시 지정해야 합니다** |
+| `CLIMATELOOP_ALLOWED_ORIGIN_REGEX` | 아니오 | 정규식 통로를 쓰지 않습니다. Vercel 프리뷰처럼 도메인이 커밋마다 바뀌는 경우에만 지정합니다 |
 | `PUBLIC_DATA_API_KEY` | 아니오 | 기상청·KPX 실시간 API 가 폴백합니다. **지역 계수는 영향받지 않습니다** — 계수는 저장소에 커밋된 CSV 스냅샷에서 옵니다 |
 | `KMA_NCST_URL` · `KMA_WARNING_URL` · `KPX_GENERATION_URL` · `KPX_CAPACITY_URL` | 아니오 | 코드의 기본 주소를 씁니다. 포털이 안내한 요청주소가 다를 때만 지정합니다 |
 | `CLIMATELOOP_EXTERNAL_CACHE_TTL` · `_FAILURE_TTL` · `_TIMEOUT` | 아니오 | 480초 · 60초 · 6초 |
@@ -152,8 +153,53 @@ npm run start                                       # 기본 3000 포트
 2. **`NEXT_PUBLIC_API_URL`** — 빌드 시점에 클라이언트 번들로 들어갑니다. 값을 바꾸면
    **다시 빌드**해야 합니다. 비밀 값을 넣지 마십시오(브라우저에 그대로 노출됩니다).
 
-SQLite 파일(`backend/data/climateloop.db`)은 상대경로로 열리므로 백엔드는 항상
-`backend/` 를 작업 디렉터리로 두고 실행해야 합니다.
+SQLite 파일(`backend/data/climateloop.db`)은 `backend/models/database.py` 위치에서
+절대경로로 열립니다. 작업 디렉터리는 상관없지만, **시드는 배포마다 다시 돌려야
+합니다** — 이 파일은 산출물이라 저장소에 없고, SQLite 는 없는 파일을 조용히 새로
+만들기 때문에 서버는 정상 기동한 뒤 첫 쿼리에서 `no such table` 로 터집니다.
+
+### Railway (백엔드) + Vercel (프론트엔드)
+
+`backend/railway.json` 에 빌드·기동 설정이 들어 있고, 그렇게 둔 이유는
+`backend/README-DEPLOY.md` 에 적혀 있습니다. 대시보드에서 지정할 것만 정리하면:
+
+**Railway 서비스**
+
+| 설정 | 값 |
+|---|---|
+| Root Directory | `backend` — **비워 두면 안 됩니다.** Nixpacks 가 `frontend/package.json` 을 보고 Node 프로젝트로 판단해 `npm: command not found` 로 실패합니다 |
+| Build Command | `python scripts/seed_db.py` (`railway.json` 이 이미 지정) |
+| Start Command | `uvicorn main:app --host 0.0.0.0 --port $PORT` (`railway.json` 이 이미 지정) |
+| Healthcheck Path | `/confidence/levels` — 이 API 에는 `/` 라우트가 없어 루트는 404 가 정상입니다 |
+
+Railway 환경변수:
+
+```bash
+CLIMATELOOP_ALLOWED_ORIGINS=https://<프로젝트>.vercel.app     # 필수
+CLIMATELOOP_ALLOWED_ORIGIN_REGEX=https://<프로젝트>-[a-z0-9-]+\.vercel\.app   # 프리뷰 배포도 쓸 때만
+OPENROUTER_API_KEY=...                                        # 없으면 AI 해설이 폴백 문구
+PUBLIC_DATA_API_KEY=...                                       # 없으면 실시간 배지·구성비가 폴백
+```
+
+`$PORT` 는 Railway 가 주입합니다. 직접 8000·8080 을 적지 마십시오.
+
+**Vercel 프로젝트**
+
+| 설정 | 값 |
+|---|---|
+| Root Directory | `frontend` |
+| Framework | Next.js (자동 감지) |
+
+Vercel 환경변수 — Production·Preview 양쪽에 넣어야 합니다:
+
+```bash
+NEXT_PUBLIC_API_URL=https://<서비스>.up.railway.app
+```
+
+경로 없는 오리진만 넣습니다. 끝에 `/api` 를 붙이면 실시간 기상 호출이
+`/api/api/weather/scenario` 가 되어 404 입니다. `NEXT_PUBLIC_*` 은 빌드 시점에
+번들로 굳으므로, 값을 넣거나 바꾼 뒤에는 **Redeploy 가 필요합니다** — 환경변수만
+저장하고 재배포하지 않으면 화면은 그대로 실패합니다.
 
 ---
 
@@ -174,9 +220,12 @@ npx tsc --noEmit && npx eslint src && npm run build
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `sqlite3.OperationalError: no such table: energy_efficiency` | 테이블 생성 전에 시드를 돌렸습니다. 서버 기동으로는 테이블이 생기지 않습니다 | `cd backend && python -m models.database` 후 다시 시드 |
-| `seed_db.py` 가 `unable to open database file` | `backend/` 에서 실행했습니다 | 저장소 루트로 이동 후 `python backend/scripts/seed_db.py` |
-| **모든 지역 결과가 동일** | 시드 미실행 — 계수가 전부 1.0 | 저장소 루트에서 `python backend/scripts/seed_db.py` |
+| `sqlite3.OperationalError: no such table: energy_efficiency` | 시드 미실행. 서버 기동으로는 테이블이 생기지 않습니다 | `python backend/scripts/seed_db.py` — 이 스크립트가 테이블 생성까지 합니다 |
+| **모든 지역 결과가 동일** | 시드 미실행 — 계수가 전부 1.0 | `python backend/scripts/seed_db.py` |
+| 배포한 백엔드에서 `/calculate`·`/regions` 만 500, `/chat`·`/confidence/levels` 는 200 | 서버가 연 DB 에 테이블·계수가 없습니다(시드된 DB 는 산출물이라 저장소에 없음) | 기동 로그의 `[db:boot]` 줄을 보십시오. `rows = 0` 이면 `ensure_seeded()` 가 그 자리에서 채웁니다. 그 줄 자체가 없으면 배포된 커밋이 이 수정을 담고 있지 않습니다 |
+| `[db:boot] 경로 불일치!` 로그 | 시드와 서버가 서로 다른 파일을 가리킵니다 | 두 경로 모두 각 모듈의 파일 위치에서 유도되므로 정상적으로는 나오지 않습니다. 나온다면 `models/database.py` 나 `scripts/seed_db.py` 의 `DB_PATH` 가 수정된 것입니다 |
+| 배포한 프론트에서 4개 호출 전부 `TypeError: Failed to fetch` | 백엔드의 `CLIMATELOOP_ALLOWED_ORIGINS` 에 배포 도메인이 없습니다. 프리플라이트가 400 이라 응답 자체가 도착하지 않습니다 | Railway 에 `CLIMATELOOP_ALLOWED_ORIGINS=https://<도메인>` 을 넣고 재배포 |
+| 배포한 백엔드 루트 URL 이 `{"detail":"Not Found"}` | **정상입니다.** `/` 라우트가 없습니다 | 헬스체크는 `/confidence/levels` 를, API 목록은 `/docs` 를 보십시오 |
 | 시드가 `실측 열 0/4` · `builtin` 으로 끝남 | `backend/data/` 의 CSV 스냅샷 두 개가 없습니다 | 저장소에 커밋되어 있습니다. `git status` 로 삭제 여부를 확인하세요 |
 | 화면에 `--` / `계산 중...` 만 표시 | `frontend/.env.local` 없음 | `cp .env.example .env.local` 후 dev 서버 재시작 |
 | "백엔드에 연결할 수 없습니다" 배너 | 백엔드 미기동 | `cd backend && uvicorn main:app --reload` |

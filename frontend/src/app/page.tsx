@@ -217,7 +217,11 @@ const AI_DEBOUNCE_MS = 1200;
 
 // 환경변수가 비어 있으면 요청이 `undefined/calculate` 상대경로로 나가 404가 된다.
 // 그 상태로는 원인을 알 수 없으므로 요청 전에 걸러내고 조치 방법까지 안내한다.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
+//
+// 끝의 슬래시는 떼어 낸다. 아래 호출은 모두 `${API_BASE_URL}/경로` 로 이어 붙이므로
+// 값에 슬래시가 남아 있으면 `https://host//calculate` 가 된다. Vercel·Railway 의
+// 환경변수 입력란에 주소를 복사해 넣으면 슬래시가 따라오는 일이 흔하다.
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? '').trim().replace(/\/+$/, '');
 const MISSING_API_URL_MESSAGE =
   'NEXT_PUBLIC_API_URL이 설정되지 않았습니다. frontend/.env.local에 ' +
   'NEXT_PUBLIC_API_URL=http://localhost:8000 을 추가한 뒤 개발 서버를 다시 시작해 주세요.';

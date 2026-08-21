@@ -1,6 +1,7 @@
 import io
 import json
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,7 +49,80 @@ SOURCE_FALLBACK = "fallback"
 # 환경변수로 AI 호출을 끌 수 있게 한다 (테스트/오프라인 데모용)
 AI_DISABLED = os.getenv("CLIMATELOOP_DISABLE_AI", "").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="ClimateLoop API")
+
+def ensure_seeded() -> None:
+    """서버가 실제로 열 DB 에 계수가 들어 있는지 기동 시점에 확인하고, 비면 채운다.
+
+    배포 빌드 단계에서 시드를 돌리는 것만으로는 부족했다. 시드된
+    data/climateloop.db 는 산출물이라 저장소에 없고, SQLite 는 없는 파일을 조용히
+    새로 만든다 — 그래서 "기동 성공 + 첫 쿼리에서 no such table" 이라는, 로그만
+    봐서는 정상으로 보이는 실패가 난다. 실제로 Railway 에서 /calculate·/regions
+    만 500 이고 /chat·/confidence/levels 는 200 이었다.
+
+    빌드 단계에 의존하지 않는 이유가 하나 더 있다. 빌더 종류·레이어 캐시·마운트된
+    볼륨에 따라 빌드 때 만든 파일이 런타임에 그 자리에 없을 수 있다. 반면 이
+    함수는 **서버가 실제로 열 파일을 직접 보고** 판단하므로 그 변수들에 걸리지
+    않는다. 빌드 단계의 시드는 그대로 두었다 — 첫 요청을 기다리게 하지 않고,
+    실패하면 빌드 로그에서 바로 보인다.
+
+    비어 있을 때만 채운다. 매 기동마다 다시 적재하지 않으므로 볼륨을 붙여
+    DB 를 보존하는 구성에서도 하는 일이 없다.
+
+    실패해도 기동은 막지 않는다. 이 모듈의 다른 임포트를 try 로 감싸는 것과 같은
+    이유다 — AI·외부 데이터 없이도 돌아가야 하는 것처럼, 계수를 못 채웠다고
+    /chat·/confidence/levels 까지 죽일 이유가 없다.
+    """
+    from models.database import DB_PATH as SERVER_DB_PATH, init_db
+
+    try:
+        from scripts.seed_db import (
+            DB_PATH as SEED_DB_PATH,
+            describe_database,
+            seed_data,
+        )
+    except Exception as exc:  # pragma: no cover
+        print(f"[db:boot] 시드 모듈을 불러오지 못했습니다: {exc!r}")
+        print(f"[db:boot] 서버가 열 DB = {SERVER_DB_PATH}")
+        return
+
+    # 시드와 서버가 같은 파일을 보는지 먼저 확인한다. 예전 코드는 둘 다 CWD 기준
+    # 상대경로였고 기준 디렉터리가 서로 달라, 시드가 성공해도 서버는 빈 DB 를 봤다.
+    # 두 경로는 이제 각 모듈의 파일 위치에서 유도되므로 어긋날 수 없지만, 어긋나면
+    # 증상이 다시 "원인 모를 500" 이 되므로 로그에 남긴다.
+    if os.path.realpath(SEED_DB_PATH) != os.path.realpath(SERVER_DB_PATH):
+        print("[db:boot] 경로 불일치! 시드와 서버가 서로 다른 파일을 가리킵니다.")
+        print(f"[db:boot]   seed   -> {SEED_DB_PATH}")
+        print(f"[db:boot]   server -> {SERVER_DB_PATH}")
+
+    # 파일·테이블이 없으면 만든다. 이미 있으면 아무 일도 하지 않는다.
+    init_db()
+    state = describe_database("boot")
+
+    if state["rows"]:
+        return
+
+    # 테이블은 있는데 행이 없다 = 빌드 단계의 시드가 돌지 않았거나 다른 파일에 썼다.
+    print("[db:boot] 지역 계수가 비어 있습니다. 시드를 지금 실행합니다.")
+    try:
+        seed_data()
+    except Exception as exc:  # pragma: no cover
+        print(f"[db:boot] 시드 실패: {exc!r}")
+        # 테이블은 있고 행만 없는 상태다. 두 엔드포인트가 서로 다르게 떨어진다:
+        # /calculate 는 load_efficiency_map 의 폴백으로 모든 계수가 1.0 이 되고
+        # (지역 차이가 사라진 채 200), /regions 는 load_all_efficiency_maps 가
+        # 빈 dict 를 돌려주므로 regions: [] 로 200 이 된다(지도 마커가 없다).
+        print("[db:boot] /calculate 는 모든 지역 계수 1.0 으로, /regions 는 빈 "
+              "목록으로 응답합니다. 나머지 엔드포인트는 영향받지 않습니다.")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # 요청을 받기 전에 끝난다. 여기서 확인해 두지 않으면 첫 요청이 500 이 된다.
+    ensure_seeded()
+    yield
+
+
+app = FastAPI(title="ClimateLoop API", lifespan=lifespan)
 
 # CORS
 # 기존 설정은 allow_origins=["*"] + allow_credentials=True 였는데, 이 조합은 CORS 명세상
@@ -67,9 +141,23 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
+# 목록으로 잡을 수 없는 오리진을 위한 통로.
+#
+# Vercel 은 커밋마다 프리뷰 도메인을 새로 만든다
+# (climateloop-git-<브랜치>-<팀>.vercel.app). 프로덕션 도메인만 위 목록에 넣으면
+# 프리뷰 배포는 전부 CORS 로 막히고, 화면에는 원인을 알 수 없는
+# "TypeError: Failed to fetch" 만 뜬다.
+#
+# 미지정 시 None 이라 기본 동작은 지금까지와 같다. 지정할 때는 도메인 끝을
+# 반드시 고정하라 — climateloop.*\.vercel\.app 처럼 열어 두면 남의 프로젝트
+# 도메인도 통과한다.
+#   예: CLIMATELOOP_ALLOWED_ORIGIN_REGEX=https://climateloop-[a-z0-9-]+\.vercel\.app
+ALLOWED_ORIGIN_REGEX = os.getenv("CLIMATELOOP_ALLOWED_ORIGIN_REGEX") or None
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],

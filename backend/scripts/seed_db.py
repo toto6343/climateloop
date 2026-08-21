@@ -41,13 +41,17 @@ import sqlite3
 import sys
 from datetime import datetime
 
-DB_PATH = 'backend/data/climateloop.db'
-
 # services/ 는 backend/ 를 기준으로 임포트된다(main.py 와 같은 규약).
-# 이 스크립트는 리포지토리 루트에서 실행되므로 backend/ 를 경로에 넣어 준다.
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
+
+# DB 경로는 이 파일 위치에서 만든다. 예전엔 'backend/data/climateloop.db' 라
+# **저장소 루트에서만** 돌았고, backend/ 안에서 실행하면 unable to open database file
+# 이었다. Railway 는 서비스 Root Directory 가 backend/ 라 그쪽에서 실행되므로
+# 배포 스크립트가 이 경로에 걸렸다. 이제 어느 디렉터리에서 돌려도 같은 파일을 쓴다
+# (models/database.py 의 DB_PATH 와 같은 값이어야 한다 — 같은 파일을 가리킨다).
+DB_PATH = os.path.join(BACKEND_DIR, 'data', 'climateloop.db')
 
 SOURCE_RECORD_PATH = os.path.join(BACKEND_DIR, 'data', 'coefficient_source.json')
 
@@ -243,6 +247,13 @@ def write_source_record(origin: str, note: str, detail: dict = None,
 
 
 def seed_data():
+    # 테이블이 없으면 DELETE 가 "no such table" 로 터진다. 예전에는 그 전에
+    # `python -m models.database` 를 따로 돌려야 했고, 순서를 놓치는 것이 README
+    # 문제해결 표의 첫 줄이었다. 스키마 정의는 여기 두지 않고 그 모듈에 맡긴다 —
+    # 정의가 두 곳에 갈라지면 언젠가 어긋난다.
+    from models.database import init_db
+    init_db()
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -413,6 +424,59 @@ def seed_data():
     print(f"주의: {note}")
 
     print(f"출처 기록: {SOURCE_RECORD_PATH}")
+
+    describe_database()
+
+
+def describe_database(label: str = "seed") -> dict:
+    """방금 쓴 DB 가 어디에 있고 무엇이 들어갔는지 그대로 출력한다.
+
+    이 출력이 없으면 Railway 배포 로그에서 확인할 수 있는 것이 "seed 를 실행했다"
+    뿐이다. 정작 알아야 하는 것은 **어느 파일에** 썼는지인데, 예전에는 시드와
+    서버가 서로 다른 경로를 열고 있었고(시드 CWD 기준 상대경로 vs 서버 CWD 기준
+    상대경로) 그래서 시드가 성공해도 서버는 빈 DB 를 보며
+    "no such table: energy_efficiency" 로 터졌다. 두 쪽이 같은 절대경로를
+    찍는지 로그만 보고 확인할 수 있어야 한다.
+
+    반환값은 main.py 의 기동 점검이 같은 내용을 다시 계산하지 않고 쓰려고 둔 것이다.
+    """
+    exists = os.path.exists(DB_PATH)
+    tables: list = []
+    rows = None
+    regions = None
+
+    if exists:
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            tables = sorted(
+                r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            )
+            if 'energy_efficiency' in tables:
+                rows = conn.execute("SELECT COUNT(*) FROM energy_efficiency").fetchone()[0]
+                regions = conn.execute(
+                    "SELECT COUNT(DISTINCT region) FROM energy_efficiency"
+                ).fetchone()[0]
+        finally:
+            conn.close()
+
+    size = os.path.getsize(DB_PATH) if exists else 0
+    print(f"[db:{label}] CWD                    = {os.getcwd()}")
+    print(f"[db:{label}] DB 절대경로            = {DB_PATH}")
+    print(f"[db:{label}] 파일 존재              = {exists} ({size} bytes)")
+    print(f"[db:{label}] 테이블 목록            = {tables}")
+    print(f"[db:{label}] energy_efficiency rows = {rows} ({regions} 개 시·도)")
+
+    return {
+        "db_path": DB_PATH,
+        "exists": exists,
+        "size": size,
+        "tables": tables,
+        "rows": rows,
+        "regions": regions,
+    }
+
 
 if __name__ == "__main__":
     seed_data()
