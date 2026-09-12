@@ -41,7 +41,7 @@ import GisangiGreeting from './components/GisangiGreeting';
 import EnergyQuizCard from './components/EnergyQuizCard';
 import { QUIZ_POOL, pickNextQuizIndex } from './components/energyQuiz';
 
-import { Sun, Wind, Droplets, Flame, CloudRain, CloudLightning, Snowflake, ShieldAlert, Download, Sparkles, Zap, CircleAlert, Send, X, MapPin, Gauge, Copy, Check, Award, GraduationCap, ArrowUp } from 'lucide-react';
+import { Sun, Wind, Droplets, Flame, CloudRain, CloudLightning, Snowflake, ShieldAlert, Download, Sparkles, Zap, CircleAlert, Send, X, MapPin, Gauge, Copy, Check, Award, GraduationCap, ArrowUp, ChevronDown } from 'lucide-react';
 
 // 아이콘 색은 SOURCE_COLORS에서 가져온다. 지도 오버레이의 원형 차트와 같은 색이라야
 // 같은 화면에 뜬 두 표현이 같은 발전원을 가리킨다는 것이 색만으로 읽힌다.
@@ -1020,7 +1020,7 @@ function pickBestSource(suitability: Record<string, number>): BestSource | null 
   };
 }
 
-/** 근거 토글 표식(CircleAlert 아이콘). 부모 <details className="group/reason"> 의 열림 상태에 반응한다. */
+/** 근거 토글 표식(CircleAlert 아이콘). 근거 아코디언의 제목에 함께 표시한다. */
 function ReasonBadge({ srLabel }: { srLabel: string }) {
   return (
     <span
@@ -1070,6 +1070,71 @@ function ReasonNotes({ notes }: { notes: string[] }) {
   );
 }
 
+function Accordion({
+  id,
+  label,
+  children,
+  className = '',
+  triggerClassName = '',
+  contentClassName = '',
+  group,
+}: {
+  id?: string;
+  label: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  triggerClassName?: string;
+  contentClassName?: string;
+  group?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const contentId = id ? `${id}-content` : undefined;
+
+  useEffect(() => {
+    if (!group) return;
+    const groupRoot = rootRef.current?.parentElement?.closest<HTMLElement>('[data-accordion-group]');
+    if (!groupRoot) return;
+    const closeOther = (event: Event) => {
+      if ((event as CustomEvent<HTMLDivElement>).detail !== rootRef.current) setIsOpen(false);
+    };
+    groupRoot.addEventListener('accordion-open', closeOther);
+    return () => groupRoot.removeEventListener('accordion-open', closeOther);
+  }, [group]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const root = rootRef.current;
+    root?.parentElement?.closest<HTMLElement>('[data-accordion-group]')?.dispatchEvent(
+      new CustomEvent('accordion-open', { detail: root }),
+    );
+    root?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [isOpen]);
+
+  return (
+    <div ref={rootRef} id={id} data-accordion-group-item={group} className={`scroll-mt-4 ${className}`}>
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-controls={contentId}
+        onClick={() => setIsOpen((open) => !open)}
+        className={`flex w-full items-center justify-between gap-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${triggerClassName}`}
+      >
+        <span className="min-w-0 flex-1">{label}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      <div
+        id={contentId}
+        role="region"
+        aria-hidden={!isOpen}
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'} ${contentClassName}`}
+      >
+        <div className="min-h-0 overflow-hidden">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * 적합도 섹션 맨 위의 한 줄 요약 + 근거 토글.
  *
@@ -1102,8 +1167,11 @@ function BestSourceSummary({
   const reason = explainSuitability(best.source, ctx);
 
   return (
-    <details className="group/reason rounded-lg border border-slate-300 bg-slate-50 open:border-slate-400 open:bg-white">
-      <summary className="flex items-start gap-2 px-3 py-2.5 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+    <Accordion
+      group="suitability"
+      className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 open:border-slate-400 open:bg-white"
+      label={(
+        <span className="flex items-start gap-2">
         <span className="mt-0.5 shrink-0">
           <SourceIcon source={best.source} />
         </span>
@@ -1129,7 +1197,9 @@ function BestSourceSummary({
         <span className="ml-auto pl-1 shrink-0">
           <ReasonBadge srLabel={`${best.source}이 가장 적합한 이유 보기`} />
         </span>
-      </summary>
+        </span>
+      )}
+    >
 
       <div className="px-3 pb-3 pt-3 border-t border-slate-200 space-y-3">
         <div>
@@ -1192,7 +1262,7 @@ function BestSourceSummary({
           </ul>
         </div>
       </div>
-    </details>
+    </Accordion>
   );
 }
 
@@ -1214,9 +1284,12 @@ function SuitabilityCard({
       네 번 반복하면서 카드마다 22px 을 더 먹었는데(합 44px, 카드가 두 줄일 때), 같은
       말을 카드 묶음 아래 각주가 이미 한 번 하고 있다. 각주 쪽만 남긴다.
     */
-    <details className="group/reason p-2.5 rounded-lg bg-slate-50 border border-slate-200 open:bg-white open:border-slate-400">
-      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-        <div className="flex justify-between items-center gap-1.5 mb-1.5">
+    <Accordion
+      group="suitability"
+      className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 open:bg-white open:border-slate-400"
+      label={(
+        <div>
+          <div className="flex justify-between items-center gap-1.5 mb-1.5">
           <span className="flex items-center gap-1.5 min-w-0">
             <SourceIcon source={source} />
             <span className="text-sm font-semibold text-slate-800 truncate">{source}</span>
@@ -1225,14 +1298,16 @@ function SuitabilityCard({
             <span className="text-sm font-bold text-slate-900 tabular-nums">{Math.round(value)}%</span>
             <ReasonBadge srLabel={`${source} 적합도 근거 보기`} />
           </span>
+          </div>
+          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div
+              className="h-full transition-all duration-500 ease-out"
+              style={{ width: `${Math.min(100, Math.max(0, value))}%`, backgroundColor: sourceColor(source) }}
+            />
+          </div>
         </div>
-        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-          <div
-            className="h-full transition-all duration-500 ease-out"
-            style={{ width: `${Math.min(100, Math.max(0, value))}%`, backgroundColor: sourceColor(source) }}
-          />
-        </div>
-      </summary>
+      )}
+    >
 
       <div className="mt-2.5 pt-2.5 border-t border-slate-200 space-y-2">
         {reason ? (
@@ -1245,7 +1320,7 @@ function SuitabilityCard({
           <p className="text-xs text-slate-600">계산 중...</p>
         )}
       </div>
-    </details>
+    </Accordion>
   );
 }
 
@@ -1795,9 +1870,8 @@ function FactorRows({ factors, spacing = 'space-y-3' }: { factors: Factor[]; spa
 /**
  * "왜 이 점수인가요?" 카드로 보내는 링크.
  *
- * <details> 는 앵커로 이동한다고 저절로 열리지 않는다(브라우저마다 다르다).
- * 열림 상태는 여전히 details 자신이 갖고 — 그래서 별도 state 를 두지 않는다 —
- * 여기서는 이동하는 김에 한 번 밀어 열어 줄 뿐이다.
+ * 아코디언은 자체 state 를 가지므로, 링크에서 trigger 버튼을 눌러 열고 같은
+ * 컴포넌트가 열림 위치로 스크롤한다.
  */
 function FactorBreakdownLink() {
   return (
@@ -1805,7 +1879,9 @@ function FactorBreakdownLink() {
       href={`#${FACTOR_BREAKDOWN_ID}`}
       onClick={() => {
         const el = document.getElementById(FACTOR_BREAKDOWN_ID);
-        if (el instanceof HTMLDetailsElement) el.open = true;
+        const trigger = el?.querySelector('button');
+        if (trigger?.getAttribute('aria-expanded') !== 'true') trigger?.click();
+        else el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }}
       className="text-[11px] font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800 shrink-0"
     >
@@ -1975,28 +2051,22 @@ function DataSources() {
       className="border-t border-slate-200 pt-4 mt-2 pb-[calc(6rem+env(safe-area-inset-bottom))]"
     >
       {/*
-        "왜 이 점수인가요?" 와 같은 네이티브 <details> 를 쓴다. 기본 접힘이고 별도
-        state 가 없다. 그 카드와 같은 부품을 쓰는 이유는 화면에서 "펼쳐 보는 것"이
+        "왜 이 점수인가요?" 와 같은 Accordion 을 쓴다. 기본 접힘이고 열림 상태는
+        컴포넌트 안에서 관리한다. 같은 부품을 쓰는 이유는 화면에서 "펼쳐 보는 것"이
         한 가지 모양이어야 하기 때문이다 — 접힘/펼침 장치가 두 종류면 사용자가
         각각 배워야 한다.
 
         다만 카드 껍데기(bg-white shadow-card)는 두르지 않는다. 이 블록은 각주지
         카드가 아니고, 페이지 맨 아래 얇은 구분선 아래에 물러나 있어야 한다.
       */}
-      <details className="group">
-        <summary className="flex items-center justify-between gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+      <Accordion
+        id="data-sources"
+        label={(
           <h2 id="sources-heading" className="text-xs font-semibold text-slate-600">
             데이터 출처 <span className="tabular-nums font-normal text-slate-400">({DATA_SOURCE_COUNT})</span>
           </h2>
-          <svg
-            xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            className="shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180"
-            aria-hidden="true"
-          >
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </summary>
+        )}
+      >
 
         <p className="mt-2 text-[11px] text-slate-500 leading-snug">
           이 화면이 쓰는 공개 자료입니다. 요청 시점에 부르는 API 와, 한 번 받아 저장해 둔 파일 스냅샷이 섞여 있고
@@ -2084,7 +2154,7 @@ function DataSources() {
           리포지토리의 <span className="font-medium text-slate-500">LICENSE-ASSETS.md</span> 와{' '}
           <span className="font-medium text-slate-500">THIRD_PARTY_NOTICES.md</span> 를 참고하세요.
         </p>
-      </details>
+      </Accordion>
     </section>
   );
 }
@@ -2095,9 +2165,9 @@ function DataSources() {
  * 이 세 줄의 기본 노출 자리는 이제 "다음 단계" 카드다 — 감점 요인은 그 자체로
  * 읽히기보다 "그래서 무엇을 할 것인가" 바로 옆에 있을 때 쓸모가 있고, 별도 카드로
  * 떨어져 있으면 추천을 보는 동안 시야에 없었다. 이 카드는 접힌 채로 남아 계산
- * 근거를 다시 펼쳐볼 자리 역할만 한다(<details> 는 open 없이 기본 닫힘).
+ * 근거를 다시 펼쳐볼 자리 역할만 한다(Accordion 은 기본 닫힘).
  *
- * 접힘/펼침은 네이티브 <details>로 처리해 별도 state를 쓰지 않는다.
+ * 접힘/펼침은 공통 Accordion 으로 처리해 높이·투명도 전환과 스크롤 동작을 통일한다.
  */
 function FactorBreakdown({ factors }: { factors?: Factor[] | null }) {
   return (
@@ -2109,17 +2179,7 @@ function FactorBreakdown({ factors }: { factors?: Factor[] | null }) {
       shrink-0: 접혔을 때든 펼쳤을 때든 이 카드는 자기 콘텐츠 높이를 지킨다. 칸에
       자리가 모자랄 때 눌려서 글이 잘리는 쪽이 아니라, 아래 박스가 줄어드는 쪽이다.
     */
-    <details id={FACTOR_BREAKDOWN_ID} className="group shrink-0 bg-white rounded-lg shadow-card scroll-mt-4">
-      <summary className="p-3 flex justify-between items-center cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-        <h2 className="text-base font-semibold text-slate-900">왜 이 점수인가요?</h2>
-        <svg
-          xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          className="text-slate-500 transition-transform duration-200 group-open:rotate-180"
-        >
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </summary>
+    <Accordion id={FACTOR_BREAKDOWN_ID} className="shrink-0 bg-white rounded-lg shadow-card" triggerClassName="p-3" label={<h2 className="text-base font-semibold text-slate-900">왜 이 점수인가요?</h2>}>
 
       <div className="px-3 pb-3">
         {!factors || factors.length === 0 ? (
@@ -2146,7 +2206,7 @@ function FactorBreakdown({ factors }: { factors?: Factor[] | null }) {
           해설과 채팅 답변이며, 그 답변은 OpenRouter를 통한 AI 모델로 생성됩니다.
         </p>
       </div>
-    </details>
+    </Accordion>
   );
 }
 
@@ -2539,6 +2599,7 @@ function BeginnerWizard({
   quizIndex,
   advanceQuiz,
   onShowDetails,
+  detailsOpen,
   hasSavedSession,
   onResetSession,
   teacherMode,
@@ -2558,6 +2619,7 @@ function BeginnerWizard({
   quizIndex: number;
   advanceQuiz: () => void;
   onShowDetails: () => void;
+  detailsOpen: boolean;
   hasSavedSession: boolean;
   onResetSession: () => void;
   teacherMode: boolean;
@@ -2688,7 +2750,16 @@ function BeginnerWizard({
       {step === 3 && <div className="px-5 pb-4 sm:px-8"><LearningBadges unlocked={badges} /></div>}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 sm:px-8">
-        <button type="button" onClick={onShowDetails} className="text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4 hover:text-slate-800">계산 근거 펼치기</button>
+        <button
+          type="button"
+          onClick={onShowDetails}
+          aria-expanded={detailsOpen}
+          aria-controls="detailed-analysis"
+          className="flex min-h-11 items-center gap-1 text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+        >
+          계산 근거 펼치기
+          <ChevronDown className={`h-4 w-4 no-underline transition-transform duration-300 ${detailsOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+        </button>
         <div className="flex gap-2">
           {step > 1 && <button type="button" onClick={() => setStep(step - 1)} className="min-h-11 rounded-xl px-5 text-sm font-bold text-slate-600 hover:bg-slate-100">이전</button>}
           {step < 3 && <button type="button" onClick={() => setStep(step + 1)} className="min-h-11 rounded-xl bg-emerald-500 px-6 text-sm font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-600">다음으로</button>}
@@ -3892,9 +3963,10 @@ export default function Home() {
         isCalculating={isCalculating}
         quizIndex={quizIndex}
         advanceQuiz={advanceQuiz}
+          detailsOpen={showDetails}
         onShowDetails={() => {
           setShowDetails(true);
-          requestAnimationFrame(() => document.getElementById('detailed-analysis')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+            requestAnimationFrame(() => document.getElementById('detailed-analysis')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
         }}
         hasSavedSession={hasSavedSession}
         onResetSession={resetBeginnerSession}
@@ -3903,8 +3975,21 @@ export default function Home() {
         badges={badges}
       />
 
-      {showDetails && (
-        <div id="detailed-analysis" className="w-full max-w-[1600px] scroll-mt-4">
+      <div
+        id="detailed-analysis"
+        aria-hidden={!showDetails}
+        className={`grid w-full transition-[grid-template-rows,opacity] duration-300 ease-out ${showDetails ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'}`}
+      >
+        <div className="min-h-0 w-full overflow-hidden space-y-2">
+      {showDetails && wizardStep < 3 && (
+        <div className="w-full max-w-[1100px] scroll-mt-4 rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-4 text-sm text-slate-600">
+          <p className="font-bold text-slate-800">계산 대시보드는 3단계 결과 화면에서 열립니다.</p>
+          <p className="mt-1 text-xs leading-relaxed">먼저 지역과 에너지 믹스를 정한 뒤 결과와 퀴즈까지 완료하면 현재 설정의 상세 계산 근거가 표시됩니다.</p>
+        </div>
+      )}
+
+      {showDetails && wizardStep === 3 && (
+        <div className="w-full max-w-[1600px] scroll-mt-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SimulationContextBar
               region={selectedRegion}
@@ -3926,7 +4011,7 @@ export default function Home() {
           </div>
         </div>
       )}
-      <div className="mt-2 w-full max-w-[1600px]">
+      {showDetails && wizardStep === 3 && <div className="mt-2 w-full max-w-[1600px]">
         <ComparisonControls
           selectedRegion={selectedRegion}
           compareRegion={compareRegion}
@@ -3935,7 +4020,7 @@ export default function Home() {
             setComparison(null);
           }}
         />
-      </div>
+      </div>}
 
       {/*
         섹션 사이 간격 2.5(10px) → 9(36px).
@@ -3945,7 +4030,7 @@ export default function Home() {
         가르는 것은 이 여백 하나뿐이다 — 카드 사이 간격(8px)보다 네 배 넓어야
         "다른 묶음"으로 읽힌다. 같은 이유로 섹션 제목도 카드 제목보다 크다.
       */}
-      {showDetails && <div className="w-full max-w-[1600px] space-y-9">
+      {showDetails && wizardStep === 3 && <div className="w-full max-w-[1600px] space-y-9">
         <CalculationFlow />
         <RegionComparisonCard comparison={comparison} regionA={selectedRegion} regionB={compareRegion ?? ''} onClose={() => setCompareRegion(null)} />
         {/*
@@ -4094,6 +4179,7 @@ export default function Home() {
                   role="tabpanel"
                   aria-labelledby={weatherTabId(weatherTabIndex(selectedWeather))}
                   tabIndex={0}
+                  data-accordion-group="suitability"
                   className="focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 rounded-lg"
                 >
                   <BestSourceSummary
@@ -4293,6 +4379,8 @@ export default function Home() {
         */}
         <DataSources />
       </div>}
+        </div>
+      </div>
 
       {/*
         PDF 전용 리포트 — 화면 밖(left:-9999px)에 렌더된다.
