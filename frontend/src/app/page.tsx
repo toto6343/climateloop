@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import MapWrapper from './components/MapWrapper';
@@ -377,8 +378,19 @@ function GoalBadge({ size = 'sm', title, className = '' }: { size?: 'xs' | 'sm';
  * 배지는 순수 표시 전용이다 — 눌러도 이동·동작이 없으므로 <button>이 아니라
  * <span>을 쓰고, 클릭 가능해 보이는 pointer 대신 cursor-help 를 준다.
  * 네이티브 title 만 있던 시절에는 데스크톱 호버에서만 조건이 보였고 모바일 탭·
- * 키보드에서는 확인할 길이 없었다. tabIndex={0} + group-focus 로 탭·포커스에도
+ * 키보드에서는 확인할 길이 없었다. tabIndex={0} + focus 로 탭·포커스에도
  * 같은 툴팁이 열리고, aria-label·aria-describedby 로 조건이 스크린리더에 읽힌다.
+ *
+ * ── 왜 portal + 수동 위치 계산인가 ──
+ *
+ * 툴팁을 배지 안의 absolute 자식으로 두던 시절, "탐험 시작"(맨 왼쪽 배지)의
+ * 툴팁이 잘렸다. 원인이 둘이다: ① 조상인 .beginner-wizard 섹션의
+ * overflow-hidden(둥근 모서리 유지용)이 툴팁 위쪽을 자르고, ② left-1/2
+ * -translate-x-1/2 중앙 정렬이 화면 왼쪽 경계 밖으로 삐져나갔다.
+ * Popper/Floating UI 같은 의존성은 없으므로(package.json 참고) createPortal 로
+ * body에 직접 렌더링해 ①을 피하고, getBoundingClientRect + 뷰포트 경계 감지로
+ * ②를 flip/shift한다. z-index는 카드 그림자·지도(z-10)·스티키 헤더(z-40) 위,
+ * AI 플로팅 버튼(z-50) 아래인 z-[60] 한 값으로 고정한다.
  */
 function BadgeTip({
   id,
@@ -394,27 +406,91 @@ function BadgeTip({
   children: React.ReactNode;
 }) {
   const tipId = `badge-tip-${id}`;
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; align: 'left' | 'center' | 'right'; below: boolean } | null>(null);
+
+  // 앵커 위치에서 툴팁 좌표를 잰다. 열릴 때·스크롤/리사이즈 때마다 다시 잰다.
+  useEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const el = anchorRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const TOOLTIP_W = 208; // w-52
+      const GAP = 8;         // mb-2 상당
+      const MARGIN = 8;      // 뷰포트 가장자리 여백
+      // 세로: 위 공간이 모자라면(상단 근처) 아래로 flip — 배지가 카드 아래쪽에
+      // 있을 때 위쪽 overflow-hidden에 잘리는 경우도 함께 피한다.
+      // fixed 포지셔닝이므로 뷰포트 기준(rect.top/bottom) 그대로 쓴다(scrollY 금지).
+      const below = rect.top < 140;
+      const top = below ? rect.bottom + GAP : rect.top - GAP;
+      // 가로 shift: 중앙 정렬을 기본으로, 경계에 닿으면 안쪽으로 민다.
+      const center = rect.left + rect.width / 2;
+      let left = center - TOOLTIP_W / 2;
+      let align: 'left' | 'center' | 'right' = 'center';
+      if (left < MARGIN) {
+        left = Math.min(rect.left, window.innerWidth - TOOLTIP_W - MARGIN);
+        align = 'left';
+      } else if (left + TOOLTIP_W > window.innerWidth - MARGIN) {
+        left = Math.max(window.innerWidth - TOOLTIP_W - MARGIN, MARGIN);
+        align = 'right';
+      }
+      setPos({ top, left: Math.max(MARGIN, left), align, below });
+    };
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+    };
+  }, [open ]);
+
+  // 렌더 중 DOM 읽기를 하지 않는다 — 방향은 measure 가 정한 below 하나로만 본다.
+  // (이전에는 렌더에서 getBoundingClientRect 를 다시 읽어 방향이 뒤집히는 버그가 있었다.)
+  const isBelow = pos?.below ?? false;
+
   return (
     <span
+      ref={anchorRef}
       tabIndex={0}
       role="img"
       aria-label={`${label} 배지 — ${condition} (${unlocked ? '획득함' : '아직 미획득'})`}
       aria-describedby={tipId}
-      className="group/badge relative inline-flex cursor-help rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+      onTouchStart={() => setOpen((v) => !v)}
+      className="inline-flex cursor-help rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
     >
       {children}
-      <span
-        role="tooltip"
-        id={tipId}
-        className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-52 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg bg-slate-800 px-3 py-2 text-left shadow-lg opacity-0 transition-opacity duration-150 group-hover/badge:opacity-100 group-focus/badge:opacity-100"
-      >
-        <span className="block text-xs font-bold text-white">
-          {label} · {unlocked ? '획득함' : '아직 미획득'}
-        </span>
-        <span className="mt-0.5 block text-[11px] leading-snug text-slate-200">{condition}</span>
-        <span className="mt-1 block text-[10px] text-slate-400">표시 전용 — 눌러도 이동하지 않아요.</span>
-        <span aria-hidden="true" className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-800" />
-      </span>
+      {open &&
+        pos &&
+        createPortal(
+          <span
+            role="tooltip"
+            id={tipId}
+            style={{ top: pos.top, left: pos.left, transform: isBelow ? 'translateY(0)' : 'translateY(-100%)' }}
+            className="fixed z-[60] w-52 max-w-[calc(100vw-1rem)] rounded-lg bg-slate-800 px-3 py-2 text-left shadow-lg"
+          >
+            <span className="block text-xs font-bold text-white">
+              {label} · {unlocked ? '획득함' : '아직 미획득'}
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-snug text-slate-200">{condition}</span>
+            <span className="mt-1 block text-[10px] text-slate-400">표시 전용 — 눌러도 이동하지 않아요.</span>
+            <span
+              aria-hidden="true"
+              className={`absolute w-0 h-0 border-x-4 border-x-transparent ${
+                isBelow
+                  ? 'bottom-full border-b-4 border-b-slate-800'
+                  : 'top-full border-t-4 border-t-slate-800'
+              } ${pos.align === 'left' ? 'left-4' : pos.align === 'right' ? 'right-4' : 'left-1/2 -translate-x-1/2'}`}
+            />
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }
