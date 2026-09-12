@@ -35,6 +35,51 @@ export interface WeatherInfo {
   msg: string;
 }
 
+export interface WeatherObservation {
+  temperature_c: number;
+  precipitation_type: number;
+  wind_speed_ms: number | null;
+  rainfall_mm: number | null;
+  base_date: string;
+  base_time: string;
+}
+
+export interface WeatherWarnings {
+  storm: boolean;
+  active_titles: string[];
+  count: number;
+}
+
+export interface WeatherSnapshot {
+  source: 'live' | 'fallback';
+  scenario: string;
+  raw?: {
+    observation?: WeatherObservation;
+    warnings?: WeatherWarnings;
+  };
+  meta?: {
+    observed_at: string | null;
+    age_seconds: number | null;
+    stale: boolean;
+    fetched_at: string;
+    source_detail: string;
+    profile_version: string;
+  };
+}
+
+export interface ClimateNormals {
+  available: boolean;
+  region: string;
+  source: 'live' | 'fallback';
+  period?: { from: string | null; to: string | null; samples: number };
+  averages?: {
+    temperature_c: number | null;
+    precipitation_mm: number | null;
+    wind_speed_ms: number | null;
+    solar_radiation: number | null;
+  };
+}
+
 /** 목표 명시(ARCS Confidence C-1). gap은 달성 시 0, 음수가 되지 않는다. */
 export interface Goal {
   target: number;
@@ -180,6 +225,12 @@ export interface SimulationResult {
     origin?: string;
     covered_sources?: Partial<Record<'solar' | 'wind' | 'hydro' | 'thermal', string>>;
   };
+}
+
+export interface RegionComparison {
+  meta?: { model_version?: string; generated_at?: string };
+  conditions: { mix: EnergyMixValues; weather_scenario: string };
+  regions: SimulationResult[];
 }
 
 /**

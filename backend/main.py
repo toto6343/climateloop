@@ -1,13 +1,16 @@
 import io
 import json
 import os
+import hashlib
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from models.database import SessionLocal, EnergyEfficiency
+from models.database import SessionLocal, EnergyEfficiency, WeatherData
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -48,6 +51,26 @@ SOURCE_FALLBACK = "fallback"
 
 # 환경변수로 AI 호출을 끌 수 있게 한다 (테스트/오프라인 데모용)
 AI_DISABLED = os.getenv("CLIMATELOOP_DISABLE_AI", "").lower() in ("1", "true", "yes")
+
+API_VERSION = "1.1.0"
+SIMULATION_MODEL_VERSION = "relative-index-v1"
+WEATHER_PROFILE_VERSION = "scenario-v1"
+
+
+def response_metadata() -> dict:
+    """수치 응답을 재현할 때 필요한 버전과 생성 시각을 함께 공개한다."""
+    return {
+        "api_version": API_VERSION,
+        "model_version": SIMULATION_MODEL_VERSION,
+        "weather_profile_version": WEATHER_PROFILE_VERSION,
+        "coefficient_version": COEFFICIENT_SOURCE.get("version") or "unknown",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _configured_environment_value(name: str) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    return bool(value) and "your_" not in value and "placeholder" not in value
 
 
 def ensure_seeded() -> None:
@@ -163,6 +186,19 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
+MAX_REQUEST_BYTES = 256 * 1024
+
+
+@app.middleware("http")
+async def reject_oversized_requests(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > MAX_REQUEST_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={"detail": "요청 본문이 너무 큽니다."},
+        )
+    return await call_next(request)
+
 
 # DB Dependency
 def get_db():
@@ -173,10 +209,54 @@ def get_db():
         db.close()
 
 
+@app.get("/health")
+def health():
+    """프로세스가 요청을 받을 수 있는지만 빠르게 확인한다."""
+    return {
+        "status": "ok",
+        "service": "climateloop-api",
+        "version": API_VERSION,
+    }
+
+
+@app.get("/ready")
+def readiness(db: Session = Depends(get_db)):
+    """트래픽을 받아도 되는지 DB·설정 상태를 확인한다.
+
+    외부 API는 여기서 실제 호출하지 않는다. 상류 장애 때문에 배포 플랫폼이
+    인스턴스를 계속 재시작하면 오히려 시뮬레이터의 폴백 경로가 죽기 때문이다.
+    """
+    checks = {
+        "database": False,
+        "coefficients": False,
+        "ai": not AI_DISABLED and summary_graph is not None,
+        "public_data_key": _configured_environment_value("PUBLIC_DATA_API_KEY"),
+    }
+    try:
+        checks["database"] = db.query(EnergyEfficiency).count() > 0
+        checks["coefficients"] = bool(COEFFICIENT_SOURCE.get("covered_sources"))
+    except Exception as exc:
+        print(f"[ready] DB 확인 실패: {exc!r}")
+
+    status = "ready" if checks["database"] and checks["coefficients"] else "not_ready"
+    payload = {
+        "status": status,
+        "version": API_VERSION,
+        "checks": checks,
+        "fallbacks": {
+            "ai": "계산 기반 요약으로 대체" if not checks["ai"] else None,
+            "public_data": "기상청·KPX 폴백 사용" if not checks["public_data_key"] else None,
+        },
+    }
+    if status != "ready":
+        raise HTTPException(status_code=503, detail=payload)
+    return payload
+
+
 class EnergyMix(BaseModel):
-    renewable: float
-    nuclear: float
-    fossil: float
+    renewable: float = Field(ge=0, le=100)
+    nuclear: float = Field(ge=0, le=100)
+    fossil: float = Field(ge=0, le=100)
     region: str = "서울"
     weather_scenario: str = "맑음"  # 맑음, 흐림/비, 태풍, 겨울
     include_ai: bool = True  # False면 LLM 호출을 건너뛴다 (테스트/빠른 미리보기용)
@@ -194,9 +274,19 @@ class RegionQuery(BaseModel):
     이 엔드포인트에서 의미가 없어, 받아놓고 무시하면 호출자가 그 값이
     반영된다고 오해한다.
     """
-    renewable: float
-    nuclear: float
-    fossil: float
+    renewable: float = Field(ge=0, le=100)
+    nuclear: float = Field(ge=0, le=100)
+    fossil: float = Field(ge=0, le=100)
+    weather_scenario: str = "맑음"
+
+
+class CompareQuery(BaseModel):
+    """두 지역 비교 요청. 두 지역은 같은 믹스·기상 조건을 공유한다."""
+    renewable: float = Field(ge=0, le=100)
+    nuclear: float = Field(ge=0, le=100)
+    fossil: float = Field(ge=0, le=100)
+    region_a: str = "서울"
+    region_b: str = "부산"
     weather_scenario: str = "맑음"
 
 
@@ -238,15 +328,15 @@ class ChatContext(BaseModel):
 
 
 class ChatTurn(BaseModel):
-    role: str  # "user" | "assistant" — 그 외 값은 chat.py 가 버린다
-    content: str = ""
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(default="", max_length=4000)
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=2000)
     context: ChatContext = ChatContext()
     # 이전 대화. 없으면 매 질문이 첫 질문처럼 취급된다.
-    history: list[ChatTurn] = []
+    history: list[ChatTurn] = Field(default_factory=list, max_length=24)
 
 
 WEATHER_PROFILES = {
@@ -427,11 +517,24 @@ def read_coefficient_source() -> dict:
                 covered[key] = value
 
     all_live = all(value in LIVE_COEFFICIENT_ORIGINS for value in covered.values())
+    version_inputs = [COEFFICIENT_SOURCE_PATH]
+    for filename in ("kpx_capacity_by_region_2025.csv", "kea_renewable_by_region_2024.csv"):
+        version_inputs.append(os.path.join(os.path.dirname(COEFFICIENT_SOURCE_PATH), filename))
+    digest = hashlib.sha256()
+    for path in version_inputs:
+        try:
+            with open(path, "rb") as handle:
+                digest.update(os.path.basename(path).encode("utf-8"))
+                digest.update(handle.read())
+        except OSError:
+            digest.update(f"missing:{path}".encode("utf-8"))
+
     return {
         "data_source": SOURCE_LIVE if all_live else SOURCE_FALLBACK,
         "origin": origin or "builtin",
         "covered_sources": covered,
         "seeded_at": record.get("seeded_at"),
+        "version": f"sha256:{digest.hexdigest()[:16]}",
         "note": record.get("note"),
     }
 
@@ -1130,6 +1233,7 @@ async def run_simulation(mix: EnergyMix, db: Session, reuse_ai_message: str = No
             print(f"Agent Error: {e}")
 
     return {
+        "meta": response_metadata(),
         # --- 기존 필드 (하위 호환: 프론트엔드 수정 없이 그대로 동작) ---
         # carbon_emissions 는 이제 기상까지 반영한 값이다 (simulate() 주석 참고).
         "carbon_emissions": carbon_round,
@@ -1175,6 +1279,25 @@ COEFFICIENT_SOURCE = read_coefficient_source()
 @app.post("/calculate")
 async def calculate_impact(mix: EnergyMix, db: Session = Depends(get_db)):
     return await run_simulation(mix, db)
+
+
+@app.post("/compare")
+async def compare_regions(query: CompareQuery, db: Session = Depends(get_db)):
+    """같은 조건에서 두 지역의 계산 결과를 비교한다."""
+    if query.region_a == query.region_b:
+        raise HTTPException(status_code=422, detail="서로 다른 두 지역을 선택해 주세요.")
+
+    base = query.model_dump(exclude={"region_a", "region_b"})
+    first = await run_simulation(EnergyMix(**base, region=query.region_a, include_ai=False), db)
+    second = await run_simulation(EnergyMix(**base, region=query.region_b, include_ai=False), db)
+    return {
+        "meta": response_metadata(),
+        "conditions": {
+            "mix": {key: getattr(query, key) for key in MIX_KEYS},
+            "weather_scenario": query.weather_scenario,
+        },
+        "regions": [first, second],
+    }
 
 
 @app.post("/regions")
@@ -1275,6 +1398,42 @@ async def chat(request: ChatRequest):
     return {"reply": reply, "model": OPENROUTER_MODEL}
 
 
+def weather_response(region: str, scenario: str, source: str, raw: dict) -> dict:
+    observation = raw.get("observation") if isinstance(raw, dict) else None
+    observed_at = None
+    age_seconds = None
+    stale = source != SOURCE_LIVE
+
+    if isinstance(observation, dict):
+        base_date = observation.get("base_date")
+        base_time = observation.get("base_time")
+        if isinstance(base_date, str) and isinstance(base_time, str) and len(base_time) >= 2:
+            try:
+                observed = datetime.strptime(
+                    f"{base_date}{base_time[:2]}", "%Y%m%d%H"
+                ).replace(tzinfo=timezone(timedelta(hours=9)))
+                observed_at = observed.isoformat()
+                age_seconds = max(0, int((datetime.now(timezone.utc) - observed).total_seconds()))
+                stale = age_seconds > 3600
+            except ValueError:
+                pass
+
+    return {
+        "scenario": scenario,
+        "source": source,
+        "region": region,
+        "raw": raw,
+        "meta": {
+            "observed_at": observed_at,
+            "age_seconds": age_seconds,
+            "stale": stale,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "source_detail": "기상청 초단기실황 + 기상특보" if source == SOURCE_LIVE else "내장 시나리오 폴백",
+            "profile_version": WEATHER_PROFILE_VERSION,
+        },
+    }
+
+
 @app.get("/api/weather/scenario")
 async def weather_scenario(region: str = "서울"):
     """지금 이 지역의 실황·특보로 본 4종 시나리오 추천값.
@@ -1293,19 +1452,58 @@ async def weather_scenario(region: str = "서울"):
     필드가 비거나 사라지는 경우를 만들지 않는다 — 있는 필드는 항상 유효한 값이다.
     """
     if weather_api is None:
-        return {"scenario": "맑음", "source": SOURCE_FALLBACK, "raw": {}}
+        return weather_response(region, "맑음", SOURCE_FALLBACK, {})
 
     recommended = await weather_api.recommend_scenario(region)
     if recommended is None:
         # 실패 이유는 서버 로그에 남는다(services 계층이 남긴다). 화면에는
         # "판정하지 못했다"만 전달하면 되고, 그 표현은 배지를 접는 것이다.
-        return {"scenario": "맑음", "source": SOURCE_FALLBACK, "raw": {}}
+        return weather_response(region, "맑음", SOURCE_FALLBACK, {})
 
+    return weather_response(
+        region,
+        recommended["scenario"],
+        SOURCE_LIVE,
+        recommended["raw"],
+    )
+
+
+@app.get("/api/weather/climate")
+def climate_normals(region: str = "서울", db: Session = Depends(get_db)):
+    """적재된 관측자료에서 지역별 연평균 기상 요약을 계산한다.
+
+    weather_data가 비어 있는 현재 설치에서는 available=false를 반환한다.
+    임의의 기후값을 만들어 교육용 숫자처럼 보이게 하지 않는 것이 이 API의 계약이다.
+    """
+    rows = db.query(WeatherData).filter(WeatherData.region == region).all()
+    if not rows:
+        return {
+            "available": False,
+            "region": region,
+            "source": SOURCE_FALLBACK,
+            "reason": "weather_data 테이블에 관측자료가 없습니다.",
+        }
+
+    def average(attribute: str):
+        values = [getattr(row, attribute) for row in rows if getattr(row, attribute) is not None]
+        return round(sum(values) / len(values), 2) if values else None
+
+    dates = [row.date for row in rows if row.date is not None]
     return {
-        "scenario": recommended["scenario"],
-        "source": SOURCE_LIVE,
+        "available": True,
         "region": region,
-        "raw": recommended["raw"],
+        "source": SOURCE_LIVE,
+        "period": {
+            "from": min(dates).isoformat() if dates else None,
+            "to": max(dates).isoformat() if dates else None,
+            "samples": len(rows),
+        },
+        "averages": {
+            "temperature_c": average("temp"),
+            "precipitation_mm": average("precipitation"),
+            "wind_speed_ms": average("wind_speed"),
+            "solar_radiation": average("solar_radiation"),
+        },
     }
 
 

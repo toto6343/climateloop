@@ -291,7 +291,17 @@ def test_live_scale_keeps_the_sliders_alive():
 # ---------------------------------------------------------------------------
 
 def test_weather_endpoint_live_and_fallback():
-    live = {"scenario": "태풍", "raw": {"observation": {"temperature_c": 18.0}, "warnings": {"storm": True}}}
+    live = {
+        "scenario": "태풍",
+        "raw": {
+            "observation": {
+                "temperature_c": 18.0,
+                "base_date": "20260911",
+                "base_time": "1200",
+            },
+            "warnings": {"storm": True},
+        },
+    }
     original = with_services(kma=_Stub(scenario=live))
     try:
         body = run(main.weather_scenario("제주"))
@@ -300,6 +310,8 @@ def test_weather_endpoint_live_and_fallback():
     check("실데이터면 source=live", body["source"] == "live", body["source"])
     check("추천 시나리오를 그대로 전달한다", body["scenario"] == "태풍", body["scenario"])
     check("근거(raw)를 함께 내려보낸다", "observation" in body["raw"])
+    check("관측 기준시각을 함께 내려보낸다", body["meta"]["observed_at"].endswith("+09:00"), str(body["meta"]))
+    check("기상 프로필 버전을 공개한다", body["meta"]["profile_version"] == main.WEATHER_PROFILE_VERSION)
 
     for label, stub in (("None 반환", _Stub(scenario=None)), ("모듈 자체가 없음", None)):
         original = with_services(kma=stub)
@@ -311,6 +323,49 @@ def test_weather_endpoint_live_and_fallback():
         # 필드가 사라지거나 비지 않는다. 화면은 배지를 접기만 하면 된다.
         check(f"폴백({label}): scenario 는 유효한 키다", body["scenario"] in main.WEATHER_PROFILES)
         check(f"폴백({label}): 500 을 던지지 않는다", isinstance(body, dict))
+
+
+def test_operational_contracts():
+    health = main.health()
+    check("health 는 프로세스 상태를 반환한다", health["status"] == "ok", str(health))
+    check("health 는 API 버전을 반환한다", health["version"] == main.API_VERSION, str(health))
+
+    metadata = main.response_metadata()
+    check("계산 메타데이터에 모델 버전이 있다", metadata["model_version"] == main.SIMULATION_MODEL_VERSION)
+    check("계산 메타데이터에 생성시각이 있다", metadata["generated_at"].endswith("+00:00"), str(metadata))
+
+
+def test_compare_and_climate_contracts():
+    db = SessionLocal()
+    try:
+        comparison = run(main.compare_regions(
+            main.CompareQuery(
+                renewable=33.3,
+                nuclear=33.3,
+                fossil=33.4,
+                region_a="서울",
+                region_b="부산",
+                weather_scenario="맑음",
+            ),
+            db,
+        ))
+        check("비교 API가 두 지역을 반환한다", len(comparison["regions"]) == 2)
+        check("비교 API가 재현 메타데이터를 반환한다", "model_version" in comparison["meta"])
+        climate = main.climate_normals("서울", db)
+        check("기후 API는 데이터 유무를 명시한다", isinstance(climate.get("available"), bool))
+        if climate["available"]:
+            check("기후 API가 적재된 표본 수를 반환한다", climate["period"]["samples"] > 0)
+        else:
+            check("기후 API가 미적재 사유를 반환한다", bool(climate.get("reason")))
+    finally:
+        db.close()
+
+    try:
+        main.EnergyMix(renewable=101, nuclear=0, fossil=0)
+        valid_range = False
+    except Exception:
+        valid_range = True
+    check("에너지 믹스 범위를 검증한다", valid_range)
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +494,8 @@ def main_():
         test_regions_falls_back_silently,
         test_live_scale_keeps_the_sliders_alive,
         test_weather_endpoint_live_and_fallback,
+        test_operational_contracts,
+        test_compare_and_climate_contracts,
         test_emission_factors_untouched,
         test_live_note_still_discloses_what_is_estimated,
         test_scale_total_matches_kpx_module,

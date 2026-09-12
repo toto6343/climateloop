@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import MapWrapper from './components/MapWrapper';
 import { BestSourceHint, RegionStat, sourceColor } from './components/energySources';
@@ -25,8 +26,11 @@ import {
   ProjectionPoint,
   ScenarioCarbon,
   SimulationResult,
+  RegionComparison,
   SuitabilityBasis,
   WeatherInfo,
+  WeatherSnapshot,
+    ClimateNormals,
   GRID_STATUS_LABELS,
   MIX_COLORS,
   MIX_LABELS,
@@ -37,7 +41,7 @@ import GisangiGreeting from './components/GisangiGreeting';
 import EnergyQuizCard from './components/EnergyQuizCard';
 import { QUIZ_POOL, pickNextQuizIndex } from './components/energyQuiz';
 
-import { Sun, Wind, Droplets, Flame, CloudRain, CloudLightning, Snowflake, ShieldAlert, Download, Sparkles, Zap, CircleAlert, Send, X } from 'lucide-react';
+import { Sun, Wind, Droplets, Flame, CloudRain, CloudLightning, Snowflake, ShieldAlert, Download, Sparkles, Zap, CircleAlert, Send, X, MapPin, Gauge, Copy, Check, Award, GraduationCap } from 'lucide-react';
 
 // 아이콘 색은 SOURCE_COLORS에서 가져온다. 지도 오버레이의 원형 차트와 같은 색이라야
 // 같은 화면에 뜬 두 표현이 같은 발전원을 가리킨다는 것이 색만으로 읽힌다.
@@ -225,6 +229,14 @@ const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? '').trim().replace(/\/+
 const MISSING_API_URL_MESSAGE =
   'NEXT_PUBLIC_API_URL이 설정되지 않았습니다. frontend/.env.local에 ' +
   'NEXT_PUBLIC_API_URL=http://localhost:8000 을 추가한 뒤 개발 서버를 다시 시작해 주세요.';
+const BEGINNER_SESSION_KEY = 'climateloop-beginner-session-v1';
+const BADGES_STORAGE_KEY = 'climateloop-learning-badges-v1';
+
+const LEARNING_BADGES = [
+  { id: 'explorer', label: '탐험 시작', description: '지역과 날씨를 골랐어요.' },
+  { id: 'mixer', label: '에너지 요리사', description: '에너지 믹스를 직접 바꿨어요.' },
+  { id: 'goal', label: '목표 도착', description: '지속 가능성 목표에 도착했어요.' },
+] as const;
 
 /** 화면에 띄울 한 줄짜리 원인 문구로 바꾼다. 상세 내용은 콘솔에 남긴다. */
 function describeApiError(error: unknown): string {
@@ -1352,6 +1364,8 @@ function WeatherTabs({
   carbon,
   carbonPlanned,
   liveScenario,
+  weatherSnapshot,
+  climateNormals,
 }: {
   selectedWeather: string;
   onWeatherChange: (weather: string) => void;
@@ -1368,6 +1382,8 @@ function WeatherTabs({
    * **이 값은 탭 선택을 바꾸지 않는다.** 고른 탭은 끝까지 사용자 것이다.
    */
   liveScenario?: string | null;
+  weatherSnapshot?: WeatherSnapshot | null;
+  climateNormals?: ClimateNormals | null;
 }) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const activeIndex = weatherTabIndex(selectedWeather);
@@ -1473,6 +1489,8 @@ function WeatherTabs({
           <span className="font-bold text-slate-900">{liveScenarioLabel}</span>
         </p>
       )}
+      <WeatherObservationCard snapshot={weatherSnapshot} />
+      <ClimateNormalsLine climate={climateNormals} />
       {/*
         기후 탭과 탄소 배출 섹션을 잇는 연결 문구.
 
@@ -1508,6 +1526,59 @@ function WeatherTabs({
           )}
         </p>
       </div>
+    </div>
+  );
+}
+
+function ClimateNormalsLine({ climate }: { climate?: ClimateNormals | null }) {
+  if (!climate?.available || !climate.averages) return null;
+  const { averages } = climate;
+  return (
+    <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] text-slate-500">
+      연평균 관측 요약 · 기온 {averages.temperature_c == null ? '--' : `${averages.temperature_c}°C`} · 풍속 {averages.wind_speed_ms == null ? '--' : `${averages.wind_speed_ms} m/s`} · 강수 {averages.precipitation_mm == null ? '--' : `${averages.precipitation_mm} mm`}
+    </div>
+  );
+}
+
+function WeatherObservationCard({ snapshot }: { snapshot?: WeatherSnapshot | null }) {
+  const observation = snapshot?.raw?.observation;
+  const warnings = snapshot?.raw?.warnings;
+  const hasLiveObservation = snapshot?.source === 'live' && observation;
+
+  return (
+    <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold text-slate-700">현재 관측 참고</p>
+        <span className="text-[10px] text-slate-500">
+          {hasLiveObservation ? '기상청 실황' : '관측값 없음'}
+        </span>
+      </div>
+      {hasLiveObservation ? (
+        <>
+          <div className="mt-1.5 grid grid-cols-3 gap-2 text-xs text-slate-700">
+            <div><span className="block text-[10px] text-slate-500">기온</span><strong>{observation.temperature_c.toFixed(1)}°C</strong></div>
+            <div><span className="block text-[10px] text-slate-500">풍속</span><strong>{observation.wind_speed_ms == null ? '--' : `${observation.wind_speed_ms.toFixed(1)} m/s`}</strong></div>
+            <div><span className="block text-[10px] text-slate-500">강수</span><strong>{observation.rainfall_mm == null ? '--' : `${observation.rainfall_mm.toFixed(1)} mm`}</strong></div>
+          </div>
+          <p className="mt-1.5 text-[10px] leading-snug text-slate-500">
+            {warnings?.storm
+              ? `강풍·태풍 특보 ${warnings.count}건이 반영되었습니다.`
+              : warnings?.count
+                ? `현재 특보 ${warnings.count}건이 있으나 시나리오 판정에는 반영되지 않았습니다.`
+                : '활성 특보가 없습니다.'}
+          </p>
+          {snapshot.meta?.observed_at && (
+            <p className={`mt-1 text-[10px] ${snapshot.meta.stale ? 'font-semibold text-amber-700' : 'text-slate-400'}`}>
+              기준 {snapshot.meta.observed_at.slice(0, 16).replace('T', ' ')} KST
+              {snapshot.meta.stale ? ' · 오래된 관측' : ''}
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="mt-1 text-[10px] leading-snug text-slate-500">
+          기상청 실황·특보를 확인할 수 없어 내장 시나리오 배수만 사용합니다.
+        </p>
+      )}
     </div>
   );
 }
@@ -2270,6 +2341,449 @@ function SaveReportButton({
   );
 }
 
+function ShareButton({ shareUrl }: { shareUrl: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      window.prompt('이 링크를 복사하세요.', shareUrl);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label="현재 실험 링크 복사"
+      title="현재 실험 링크 복사"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+    >
+      {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+      <span className="sr-only">{copied ? '링크가 복사되었습니다' : '현재 실험 링크 복사'}</span>
+    </button>
+  );
+}
+
+function TeacherLinkButton({ shareUrl }: { shareUrl: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCreate = async () => {
+    const rawTarget = window.prompt('학생들이 도전할 목표 점수를 입력하세요.', '70');
+    if (rawTarget === null) return;
+    const target = Number(rawTarget);
+    if (!Number.isFinite(target) || target < 0 || target > 100) {
+      window.alert('목표 점수는 0에서 100 사이로 입력해 주세요.');
+      return;
+    }
+
+    const url = new URL(shareUrl);
+    url.searchParams.set('mode', 'teacher');
+    url.searchParams.set('target', String(Math.round(target)));
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      window.prompt('이 수업 링크를 복사하세요.', url.toString());
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCreate}
+      aria-label="교사용 수업 링크 만들기"
+      title="교사용 수업 링크 만들기"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+    >
+      {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <GraduationCap className="h-4 w-4" />}
+      <span className="sr-only">{copied ? '수업 링크가 복사되었습니다' : '교사용 수업 링크 만들기'}</span>
+    </button>
+  );
+}
+
+function beginnerGrade(score?: number) {
+  if (score == null) return { label: '계산 중', tone: 'neutral', message: '내 선택이 어떤 변화를 만드는지 곧 보여드릴게요.' };
+  if (score >= 85) return { label: '아주 좋아요', tone: 'good', message: '지구가 편안해하는 조합이에요!' };
+  if (score >= 70) return { label: '좋아요', tone: 'good', message: '좋은 방향이에요. 한 걸음 더 가볼까요?' };
+  if (score >= 40) return { label: '조금 아쉬워요', tone: 'warn', message: '재생에너지를 조금 더 늘려 볼까요?' };
+  return { label: '도전 중', tone: 'bad', message: '괜찮아요. 슬라이더를 움직이며 답을 찾아봐요.' };
+}
+
+function beginnerMood(score?: number) {
+  if (score == null) return 'ready';
+  if (score >= 70) return 'happy';
+  if (score >= 40) return 'thinking';
+  return 'concerned';
+}
+
+function BeginnerMixSlider({
+  label,
+  value,
+  color,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block rounded-2xl bg-white/85 p-4 shadow-sm ring-1 ring-slate-900/5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-base font-bold text-slate-800">
+          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+          {label}
+        </span>
+        <span className="text-xl font-black tabular-nums text-slate-900">{Math.round(value)}%</span>
+      </div>
+      <input
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="beginner-range h-3 w-full cursor-pointer appearance-none rounded-full"
+        style={{ accentColor: color }}
+        aria-label={`${label} 비율`}
+        aria-valuetext={`${Math.round(value)}퍼센트`}
+      />
+    </label>
+  );
+}
+
+function BeginnerClimateScene({ score }: { score?: number }) {
+  const mood = beginnerMood(score);
+  return (
+    <div className={`climate-scene climate-scene-${mood}`} aria-label="에너지 선택에 따라 변하는 하늘 풍경">
+      <span className="climate-sun" aria-hidden="true" />
+      <span className="climate-cloud climate-cloud-one" aria-hidden="true" />
+      <span className="climate-cloud climate-cloud-two" aria-hidden="true" />
+      <span className="climate-hill climate-hill-back" aria-hidden="true" />
+      <span className="climate-hill climate-hill-front" aria-hidden="true" />
+      <div className="relative z-10 flex h-full items-end justify-between p-5 text-white">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-white/75">오늘의 지구</p>
+          <p className="mt-1 text-lg font-black">{mood === 'happy' ? '맑고 가벼운 하늘' : mood === 'concerned' ? '조금 무거운 하늘' : '변화 중인 하늘'}</p>
+        </div>
+        <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold backdrop-blur">선택에 따라 변해요</span>
+      </div>
+    </div>
+  );
+}
+
+function LearningBadges({ unlocked }: { unlocked: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-2" aria-label="학습 배지">
+      {LEARNING_BADGES.map((badge) => {
+        const isUnlocked = unlocked.includes(badge.id);
+        return (
+          <span key={badge.id} title={badge.description} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${isUnlocked ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>
+            <Award className={`h-3.5 w-3.5 ${isUnlocked ? 'text-amber-600' : 'text-slate-300'}`} aria-hidden="true" />
+            {badge.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function BeginnerWizard({
+  step,
+  setStep,
+  selectedRegion,
+  selectedWeather,
+  onRegionChange,
+  onWeatherChange,
+  mix,
+  onSliderChange,
+  results,
+  isCalculating,
+  quizIndex,
+  advanceQuiz,
+  onShowDetails,
+  hasSavedSession,
+  onResetSession,
+  teacherMode,
+  teacherTarget,
+  badges,
+}: {
+  step: number;
+  setStep: (step: number) => void;
+  selectedRegion: string;
+  selectedWeather: string;
+  onRegionChange: (value: string) => void;
+  onWeatherChange: (value: string) => void;
+  mix: EnergyMixValues;
+  onSliderChange: (key: MixKey, value: string) => void;
+  results: SimulationResult | null;
+  isCalculating: boolean;
+  quizIndex: number;
+  advanceQuiz: () => void;
+  onShowDetails: () => void;
+  hasSavedSession: boolean;
+  onResetSession: () => void;
+  teacherMode: boolean;
+  teacherTarget: number;
+  badges: string[];
+}) {
+  const grade = beginnerGrade(results?.sustainability_score);
+  const mood = beginnerMood(results?.sustainability_score);
+  const carbon = results?.carbon_emissions;
+  const metaphor = carbon == null
+    ? '선택을 바꾸면 지구의 표정도 달라져요.'
+    : carbon <= 120
+      ? '탄소 부담이 낮은 편이에요. 맑은 공기를 지키는 선택에 가까워요.'
+      : carbon <= 300
+        ? '탄소 부담이 중간 정도예요. 화석연료를 줄이면 더 가벼워질 수 있어요.'
+        : '탄소 부담이 높은 편이에요. 재생에너지를 늘려 변화를 살펴보세요.';
+
+  return (
+    <section aria-label="초보자 기후·에너지 학습 활동" className="beginner-wizard w-full max-w-[1100px] overflow-hidden rounded-[2rem] bg-[#fffdf7] shadow-xl shadow-slate-900/10 ring-1 ring-white/80">
+      <div className="bg-[#fff6d8] px-5 pb-5 pt-6 sm:px-8 sm:pt-8">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-emerald-700">ClimateLoop 배움 여행</p>
+            <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">내가 고른 에너지, 지구는 어떻게 느낄까?</h2>
+          </div>
+          <span className="hidden rounded-full bg-white/75 px-3 py-1.5 text-xs font-bold text-slate-600 sm:block">3분 체험</span>
+        </div>
+        <div className="mt-6 grid grid-cols-3 gap-2" aria-label="학습 단계">
+          {['지역 고르기', '에너지 바꾸기', '결과와 퀴즈'].map((label, index) => {
+            const number = index + 1;
+            return (
+              <button key={label} type="button" onClick={() => number <= step && setStep(number)} className="text-left" aria-current={step === number ? 'step' : undefined}>
+                <div className={`mb-2 h-2 rounded-full ${number <= step ? 'bg-emerald-500' : 'bg-white/70'}`} />
+                <span className={`text-xs font-bold ${number === step ? 'text-emerald-800' : 'text-slate-500'}`}>{number}. {label}</span>
+              </button>
+            );
+          })}
+        </div>
+        {hasSavedSession && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-slate-600" role="status">
+            <span>지난 실험을 이어서 보고 있어요.</span>
+            <button type="button" onClick={onResetSession} className="font-bold text-emerald-700 underline underline-offset-2">처음부터</button>
+          </div>
+        )}
+        {teacherMode && (
+          <div className="mt-4 rounded-xl bg-slate-900 px-3 py-2.5 text-xs text-white" role="status">
+            <span className="font-bold text-emerald-300">수업 미션</span>
+            <span className="ml-2">지속 가능성 {teacherTarget}점에 도전해 보세요.</span>
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-5 p-5 sm:p-8 lg:grid-cols-[1fr_0.72fr] lg:items-center">
+        <div className="min-w-0">
+          {step === 1 && (
+            <div className="space-y-5">
+              <div>
+                <p className="text-sm font-bold text-emerald-700">1단계 · 내 동네부터 시작해요</p>
+                <h3 className="mt-1 text-3xl font-black tracking-tight text-slate-900">어디의 이야기를<br />살펴볼까요?</h3>
+              </div>
+              <select value={selectedRegion} onChange={(event) => onRegionChange(event.target.value)} className="h-16 w-full rounded-2xl border-2 border-emerald-200 bg-emerald-50 px-5 text-xl font-black text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" aria-label="지역 선택">
+                {REGION_NAMES.map((region) => <option key={region} value={region}>{region}</option>)}
+              </select>
+              <div>
+                <p className="mb-2 text-sm font-bold text-slate-600">오늘의 날씨를 골라보세요</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {WEATHER_SCENARIOS.map((scenario) => <button key={scenario.id} type="button" onClick={() => onWeatherChange(scenario.id)} className={`min-h-12 rounded-xl px-2 text-sm font-bold transition ${selectedWeather === scenario.id ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{scenario.label}</button>)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-5">
+              <div>
+                <p className="text-sm font-bold text-emerald-700">2단계 · 에너지 레시피 만들기</p>
+                <h3 className="mt-1 text-3xl font-black tracking-tight text-slate-900">발전원 비율을<br />살짝 바꿔볼까요?</h3>
+                <p className="mt-2 text-sm text-slate-600">한 가지를 올리면 나머지는 자동으로 맞춰져요.</p>
+              </div>
+              <div className="space-y-3">
+                <BeginnerMixSlider label="햇빛·바람 에너지" value={mix.renewable} color="#35b779" onChange={(value) => onSliderChange('renewable', value)} />
+                <BeginnerMixSlider label="원자력 에너지" value={mix.nuclear} color="#7c83fd" onChange={(value) => onSliderChange('nuclear', value)} />
+                <BeginnerMixSlider label="화석연료" value={mix.fossil} color="#f29c7c" onChange={(value) => onSliderChange('fossil', value)} />
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="space-y-5">
+              <div>
+                <p className="text-sm font-bold text-emerald-700">3단계 · 결과를 읽어봐요</p>
+                <h3 className="mt-1 text-3xl font-black tracking-tight text-slate-900">{selectedRegion}의<br />에너지 표정이에요.</h3>
+              </div>
+              <div className={`rounded-3xl p-5 ${grade.tone === 'good' ? 'bg-emerald-50' : grade.tone === 'warn' ? 'bg-amber-50' : grade.tone === 'bad' ? 'bg-rose-50' : 'bg-slate-100'}`}>
+                <div className="flex items-center justify-between gap-4">
+                  <div><p className="text-sm font-bold text-slate-600">지구 건강 점수</p><p className="mt-1 text-4xl font-black text-slate-900">{results?.sustainability_score ?? '--'}<span className="ml-1 text-lg">점</span></p></div>
+                  <span className={`rounded-full px-3 py-2 text-sm font-black ${grade.tone === 'good' ? 'bg-emerald-500 text-white' : grade.tone === 'warn' ? 'bg-amber-400 text-amber-950' : 'bg-rose-400 text-white'}`}>{grade.label}</span>
+                </div>
+                {teacherMode && <p className="mt-2 text-xs font-bold text-slate-600">미션 목표: {teacherTarget}점 · {results && results.sustainability_score >= teacherTarget ? '달성' : '아직 도전 중'}</p>}
+                <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-700">{grade.message}</p>
+              </div>
+              {results && (teacherMode ? results.sustainability_score >= teacherTarget : results.goal?.achieved) && (
+                <div className="flex items-center gap-3 rounded-2xl bg-emerald-100 px-4 py-3 text-sm font-black text-emerald-900" role="status" aria-live="polite">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white" aria-hidden="true"><Check className="h-4 w-4 text-emerald-600" /></span>
+                  목표 점수에 도착했어요! 직접 바꿔 만든 결과예요.
+                </div>
+              )}
+              <div className="rounded-2xl bg-[#fff6d8] p-4"><p className="text-xs font-bold text-amber-800">쉽게 말하면</p><p className="mt-1 text-sm font-semibold leading-relaxed text-slate-700">{metaphor}</p><p className="mt-2 text-[10px] leading-snug text-slate-500">※ 공식적인 나무·자동차 환산값이 아니라, 이 시뮬레이션 안에서 상대적인 부담을 이해하기 위한 표현이에요.</p></div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-bold text-slate-500">다음에 해볼 일</p><p className="mt-1 text-sm font-bold text-slate-800">{isCalculating ? '새 조합을 살펴보는 중이에요...' : results?.next_action?.reason ?? '슬라이더를 움직여 다른 결과도 비교해보세요.'}</p></div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex min-h-[250px] flex-col justify-end gap-4">
+          <BeginnerClimateScene score={results?.sustainability_score} />
+          <div className="flex items-end gap-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
+            <Image src="/images/gisangi-hello.png" alt="기상이" width={82} height={82} className={`h-20 w-20 shrink-0 object-contain transition-transform duration-300 ${mood === 'happy' ? '-rotate-6' : mood === 'concerned' ? 'rotate-6' : ''}`} />
+            <div className="relative rounded-2xl bg-[#e8f7ee] px-4 py-3 text-sm font-bold leading-relaxed text-slate-700">
+              {step === 1 ? `${selectedRegion}을 골랐어요. 이제 에너지 조합을 만들어봐요!` : step === 2 ? grade.message : grade.message}
+              <span className="absolute bottom-3 -left-2 h-4 w-4 rotate-45 bg-[#e8f7ee]" aria-hidden="true" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {step === 3 && <div className="border-t border-slate-100 bg-[#fbfaf4] p-5 sm:p-8"><EnergyQuizCard key={quizIndex} question={QUIZ_POOL[quizIndex]} onNext={advanceQuiz} /></div>}
+
+      {step === 3 && <div className="px-5 pb-4 sm:px-8"><LearningBadges unlocked={badges} /></div>}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 sm:px-8">
+        <button type="button" onClick={onShowDetails} className="text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4 hover:text-slate-800">자세한 계산 보기</button>
+        <div className="flex gap-2">
+          {step > 1 && <button type="button" onClick={() => setStep(step - 1)} className="min-h-11 rounded-xl px-5 text-sm font-bold text-slate-600 hover:bg-slate-100">이전</button>}
+          {step < 3 && <button type="button" onClick={() => setStep(step + 1)} className="min-h-11 rounded-xl bg-emerald-500 px-6 text-sm font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-600">다음으로</button>}
+          {step === 3 && <button type="button" onClick={() => setStep(1)} className="min-h-11 rounded-xl bg-emerald-500 px-6 text-sm font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-600">다시 해보기</button>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SimulationContextBar({
+  region,
+  weather,
+  score,
+  isCalculating,
+}: {
+  region: string;
+  weather: string;
+  score?: number;
+  isCalculating: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-card backdrop-blur-sm sm:px-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-700">
+          <MapPin className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">현재 실험</p>
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {region} <span className="px-1 text-slate-400">·</span> {weather}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 text-xs text-slate-600">
+        <span className="hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
+        <Gauge className="h-4 w-4 text-slate-500" aria-hidden="true" />
+        <span>지속 가능성</span>
+        <strong className="tabular-nums text-slate-900">{score == null ? '--' : `${score}점`}</strong>
+        <span className={`flex items-center gap-1.5 ${isCalculating ? 'text-brand-700' : 'text-slate-500'}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${isCalculating ? 'animate-pulse bg-brand-600' : 'bg-emerald-500'}`} aria-hidden="true" />
+          {isCalculating ? '계산 중' : '최신 결과'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function RegionComparisonCard({
+  comparison,
+  regionA,
+  regionB,
+  onClose,
+}: {
+  comparison: RegionComparison | null;
+  regionA: string;
+  regionB: string;
+  onClose: () => void;
+}) {
+  if (!comparison) return null;
+  const rows = comparison.regions;
+  const best = rows.map((result) => Object.entries(result.suitability).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '--');
+  const metrics = [
+    { label: '지속 가능성', values: rows.map((result) => `${result.sustainability_score}점`), winner: 'higher' },
+    { label: '배출강도', values: rows.map((result) => `${result.carbon_emissions.toFixed(1)} g`), winner: 'lower' },
+    { label: '전력망', values: rows.map((result) => result.grid.label), winner: 'none' },
+    { label: '가장 적합한 발전원', values: best, winner: 'none' },
+  ];
+  return (
+    <section aria-labelledby="comparison-heading" className="rounded-lg bg-white p-3 shadow-card sm:p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">같은 조건 비교</p>
+          <h2 id="comparison-heading" className="mt-0.5 text-base font-bold text-slate-900">{regionA}와 {regionB}</h2>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600">비교 닫기</button>
+      </div>
+      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-slate-200 pb-2 text-sm font-semibold text-slate-900">
+        <div>{regionA}</div><div>{regionB}</div>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {metrics.map((metric) => {
+          const numeric = metric.winner === 'none' ? [] : rows.map((result) => metric.label === '지속 가능성' ? result.sustainability_score : result.carbon_emissions);
+          const winner = metric.winner === 'higher' ? Math.max(...numeric) : Math.min(...numeric);
+          return (
+            <div key={metric.label} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 py-2 text-xs">
+              {metric.values.map((value, index) => (
+                <div key={`${metric.label}-${index}`} className={`min-w-0 ${numeric[index] === winner && metric.winner !== 'none' ? 'font-bold text-brand-700' : 'text-slate-700'}`}>
+                  <span className="mr-1 text-[10px] text-slate-400 sm:hidden">{metric.label}</span>{value}
+                </div>
+              ))}
+              <span className="col-span-2 -mt-1 text-[10px] text-slate-500 sm:col-span-2">{metric.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ComparisonControls({
+  selectedRegion,
+  compareRegion,
+  onChange,
+}: {
+  selectedRegion: string;
+  compareRegion: string | null;
+  onChange: (region: string | null) => void;
+}) {
+  const options = REGION_NAMES.filter((region) => region !== selectedRegion);
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white/60 px-3 py-2 text-xs">
+      <span className="font-semibold text-slate-700">지역 비교</span>
+      <select
+        aria-label="비교할 지역"
+        value={compareRegion ?? ''}
+        onChange={(event) => onChange(event.target.value || null)}
+        className="min-w-32 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/30"
+      >
+        <option value="">비교 지역 선택</option>
+        {options.map((region) => <option key={region} value={region}>{region}</option>)}
+      </select>
+      <span className="text-slate-500">현재 지역과 같은 기상·믹스 조건으로 비교합니다.</span>
+    </div>
+  );
+}
+
 /** 채팅 한 줄. 백엔드 ChatTurn 과 같은 모양이다. */
 interface ChatTurn {
   role: 'user' | 'assistant';
@@ -2646,7 +3160,15 @@ function AiAssistantFab({
 }
 
 export default function Home() {
+  const [wizardStep, setWizardStep] = useState(1);
+  const [showDetails, setShowDetails] = useState(false);
+  const [hasSavedSession, setHasSavedSession] = useState(false);
+  const [teacherMode, setTeacherMode] = useState(false);
+  const [teacherTarget, setTeacherTarget] = useState(70);
+  const [badges, setBadges] = useState<string[]>([]);
   const [selectedRegion, setSelectedRegion] = useState("서울");
+  const [compareRegion, setCompareRegion] = useState<string | null>(null);
+  const shareReady = useRef(false);
   const [selectedWeather, setSelectedWeather] = useState("맑음");
   const [mix, setMix] = useState<EnergyMixValues>({
     renewable: 33.3,
@@ -2658,6 +3180,7 @@ export default function Home() {
   // 슬라이더뿐이면 redistributeMix 가 매 조작마다 합계를 맞춰 준다.
 
   const [results, setResults] = useState<SimulationResult | null>(null);
+  const [comparison, setComparison] = useState<RegionComparison | null>(null);
   const [emissionHistory, setEmissionHistory] = useState<number[]>([]);
   // 17개 시·도의 발전원별 지수. 지도 마커 크기와 클릭 시 뜨는 원형 차트에 쓴다.
   // /calculate 는 선택한 한 지역만 주므로 지역 간 비교를 할 수 없어 따로 받는다.
@@ -2677,6 +3200,8 @@ export default function Home() {
    * 이 값은 selectedWeather 를 절대 건드리지 않는다 — 탭은 사용자 것이다.
    */
   const [liveScenario, setLiveScenario] = useState<string | null>(null);
+  const [weatherSnapshot, setWeatherSnapshot] = useState<WeatherSnapshot | null>(null);
+  const [climateNormals, setClimateNormals] = useState<ClimateNormals | null>(null);
 
   // 계산 진행 여부. 결과를 비우는 대신 "업데이트 중"으로 표현하는 데 쓴다.
   // AI 대기와는 분리한다. 합치면 화면 전체가 10초간 흐려진다.
@@ -2709,6 +3234,124 @@ export default function Home() {
 
   /** 지역·기후 변경과 "다음 문제" 버튼이 함께 쓰는 문제 교체. */
   const advanceQuiz = () => setQuizIndex((prev) => pickNextQuizIndex(prev));
+
+  /* URL 상태를 클라이언트에서 복원하는 hydration 경계다. */
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const targetParam = Number(params.get('target'));
+    if (params.get('mode') === 'teacher') setTeacherMode(true);
+    if (Number.isFinite(targetParam)) setTeacherTarget(Math.min(100, Math.max(0, targetParam)));
+    try {
+      const savedBadges = JSON.parse(localStorage.getItem(BADGES_STORAGE_KEY) ?? '[]');
+      if (Array.isArray(savedBadges)) setBadges(savedBadges.filter((value): value is string => typeof value === 'string'));
+    } catch {
+      localStorage.removeItem(BADGES_STORAGE_KEY);
+    }
+    const hasSharedState = ['region', 'weather', 'renewable', 'nuclear', 'fossil', 'compare', 'mode', 'target']
+      .some((key) => params.has(key));
+    if (!hasSharedState) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(BEGINNER_SESSION_KEY) ?? 'null') as {
+          step?: number;
+          region?: string;
+          weather?: string;
+          compare?: string | null;
+          mix?: EnergyMixValues;
+        } | null;
+        if (saved) {
+          if (saved.region && REGION_NAMES.includes(saved.region)) setSelectedRegion(saved.region);
+          if (saved.weather && WEATHER_SCENARIOS.some((scenario) => scenario.id === saved.weather)) setSelectedWeather(saved.weather);
+          if (saved.compare && REGION_NAMES.includes(saved.compare)) setCompareRegion(saved.compare);
+          if (saved.mix && Object.values(saved.mix).every((value) => Number.isFinite(value))) setMix(saved.mix);
+          if (saved.step && saved.step >= 1 && saved.step <= 3) setWizardStep(saved.step);
+          setHasSavedSession(true);
+        }
+      } catch {
+        localStorage.removeItem(BEGINNER_SESSION_KEY);
+      }
+    }
+    const sharedRegion = params.get('region');
+    const sharedWeather = params.get('weather');
+    const sharedCompare = params.get('compare');
+    const parseMix = (key: MixKey, fallback: number) => {
+      const value = Number(params.get(key));
+      return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : fallback;
+    };
+    if (sharedRegion && REGION_NAMES.includes(sharedRegion)) setSelectedRegion(sharedRegion);
+    if (sharedWeather && WEATHER_SCENARIOS.some((scenario) => scenario.id === sharedWeather)) setSelectedWeather(sharedWeather);
+    if (sharedCompare && REGION_NAMES.includes(sharedCompare) && sharedCompare !== sharedRegion) setCompareRegion(sharedCompare);
+    if (params.has('renewable') || params.has('nuclear') || params.has('fossil')) {
+      setMix({
+        renewable: parseMix('renewable', 33.3),
+        nuclear: parseMix('nuclear', 33.3),
+        fossil: parseMix('fossil', 33.4),
+      });
+    }
+    shareReady.current = true;
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const unlockBadge = (id: string) => {
+    setBadges((current) => {
+      if (current.includes(id)) return current;
+      const next = [...current, id];
+      localStorage.setItem(BADGES_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const shareUrl = typeof window === 'undefined' ? '' : (() => {
+    const url = new URL(window.location.href);
+    url.search = new URLSearchParams({
+      region: selectedRegion,
+      weather: selectedWeather,
+      renewable: mix.renewable.toFixed(1),
+      nuclear: mix.nuclear.toFixed(1),
+      fossil: mix.fossil.toFixed(1),
+      ...(teacherMode ? { mode: 'teacher', target: String(teacherTarget) } : {}),
+      ...(compareRegion ? { compare: compareRegion } : {}),
+    }).toString();
+    return url.toString();
+  })();
+
+  useEffect(() => {
+    if (!shareReady.current) return;
+    const url = new URL(window.location.href);
+    url.search = new URLSearchParams({
+      region: selectedRegion,
+      weather: selectedWeather,
+      renewable: mix.renewable.toFixed(1),
+      nuclear: mix.nuclear.toFixed(1),
+      fossil: mix.fossil.toFixed(1),
+      ...(teacherMode ? { mode: 'teacher', target: String(teacherTarget) } : {}),
+      ...(compareRegion ? { compare: compareRegion } : {}),
+    }).toString();
+    window.history.replaceState(null, '', url);
+  }, [selectedRegion, selectedWeather, mix, compareRegion, teacherMode, teacherTarget]);
+
+  useEffect(() => {
+    if (showDetails) return;
+    localStorage.setItem(BEGINNER_SESSION_KEY, JSON.stringify({
+      step: wizardStep,
+      region: selectedRegion,
+      weather: selectedWeather,
+      compare: compareRegion,
+      mix,
+    }));
+  }, [wizardStep, selectedRegion, selectedWeather, compareRegion, mix, showDetails]);
+
+  const resetBeginnerSession = () => {
+    localStorage.removeItem(BEGINNER_SESSION_KEY);
+    setWizardStep(1);
+    setSelectedRegion('서울');
+    setSelectedWeather('맑음');
+    setCompareRegion(null);
+    setMix({ renewable: 33.3, nuclear: 33.3, fossil: 33.4 });
+    setHasSavedSession(false);
+    setBadges([]);
+    localStorage.removeItem(BADGES_STORAGE_KEY);
+  };
   // 추천 적용으로 시작된 계산인지 구분하고, 완료 후 "적용 완료" 피드백을 띄우는 데 쓴다.
   // 값은 적용 시점의 expected_score이며, 사용자가 직접 조작하면 null로 되돌린다.
   const [appliedTarget, setAppliedTarget] = useState<number | null>(null);
@@ -2727,6 +3370,7 @@ export default function Home() {
     const newMix = redistributeMix(mix, type, newValue);
 
     setMix(newMix);
+    unlockBadge('mixer');
     setAppliedTarget(null); // 직접 조작하면 "적용 완료" 피드백을 거둔다
   };
 
@@ -2759,6 +3403,9 @@ export default function Home() {
     setSelectedRegion(region);
     setEmissionHistory([]);
     setAppliedTarget(null);
+    if (region === compareRegion) setCompareRegion(null);
+    setComparison(null);
+    unlockBadge('explorer');
     advanceQuiz();
   };
 
@@ -2767,6 +3414,7 @@ export default function Home() {
     setSelectedWeather(weather);
     setEmissionHistory([]);
     setAppliedTarget(null);
+    setComparison(null);
     advanceQuiz();
   };
 
@@ -2808,6 +3456,7 @@ export default function Home() {
 
         // 기존 결과를 지우지 않고 새 값으로 교체한다 (화면이 빈 상태로 깜빡이지 않도록).
         setResults(data);
+        if (data.sustainability_score >= (teacherMode ? teacherTarget : data.goal?.target ?? 70)) unlockBadge('goal');
         setApiError(null);
         if (data.carbon_emissions) {
           setEmissionHistory(prev => [...prev, data.carbon_emissions].slice(-30)); // 최근 30개 데이터만 저장
@@ -2894,7 +3543,7 @@ export default function Home() {
       clearTimeout(scoreTimer);
       clearTimeout(aiTimer);
     };
-  }, [mix, selectedRegion, selectedWeather]);
+  }, [mix, selectedRegion, selectedWeather, teacherMode, teacherTarget]);
 
   /**
    * 기상청 실황·특보로 본 추천 시나리오. 참고 배지 하나를 위한 조회다.
@@ -2925,10 +3574,22 @@ export default function Home() {
         // 배지 자체가 렌더링되지 않게 한다 — 판정하지 못한 값을 실시간
         // 데이터처럼 보이게 하지 않기 위함이다.
         setLiveScenario(data.source === 'live' ? (data.scenario ?? null) : null);
+        setWeatherSnapshot({
+          source: data.source === 'live' ? 'live' : 'fallback',
+          scenario: typeof data.scenario === 'string' ? data.scenario : '맑음',
+          raw: data.raw,
+          meta: data.meta,
+        });
+        const climateResponse = await fetch(
+          `${API_BASE_URL}/api/weather/climate?region=${encodeURIComponent(selectedRegion)}`,
+        );
+        if (climateResponse.ok && !cancelled) setClimateNormals(await climateResponse.json());
       } catch (error) {
         if (!cancelled) {
           console.error("실시간 기상 시나리오 조회 실패:", error);
           setLiveScenario(null);
+          setWeatherSnapshot(null);
+                  setClimateNormals(null);
         }
       }
     };
@@ -2938,6 +3599,34 @@ export default function Home() {
       cancelled = true;
     };
   }, [selectedRegion]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!compareRegion || compareRegion === selectedRegion || !API_BASE_URL) {
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/compare`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...mix, region_a: selectedRegion, region_b: compareRegion, weather_scenario: selectedWeather }),
+        });
+        if (!response.ok) throw new Error(`비교 요청 실패: ${response.status}`);
+        const data = await response.json();
+        if (!cancelled) setComparison(data);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('지역 비교 실패:', error);
+          setComparison(null);
+        }
+      }
+    }, SCORE_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [compareRegion, selectedRegion, selectedWeather, mix]);
 
   // 지금 고른 기후 시나리오의 표시 이름.
   const currentScenario = WEATHER_SCENARIOS[weatherTabIndex(selectedWeather)];
@@ -3099,7 +3788,7 @@ export default function Home() {
       비어 있었다. 세로로도 위아래 64px 을 먹어 첫 화면(900px)의 7% 를 여백에
       내주고 있었다.
     */
-    <main className="flex min-h-screen flex-col items-center p-3 sm:p-4 lg:p-5 bg-slate-100">
+    <main className="app-shell flex min-h-screen flex-col items-center p-3 sm:p-4 lg:p-5">
       {/*
         머리글을 sticky 로 고정한다.
 
@@ -3122,10 +3811,13 @@ export default function Home() {
         옆에 붙이고(좁은 화면에서는 접힌다) 제목 크기를 text-4xl → text-xl 로
         내려 55px 안쪽으로 들어온다. 이 화면의 주인공은 로고가 아니라 데이터다.
       */}
-      <header className="sticky top-0 z-40 w-full max-w-[1600px] mb-2.5 py-2 bg-slate-100">
+      <header className="sticky top-0 z-40 w-full max-w-[1600px] mb-3 border-b border-slate-200/80 bg-[#eef2f5]/90 py-2.5 backdrop-blur-md">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-baseline gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight shrink-0">ClimateLoop</h1>
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-900 text-[11px] font-bold text-white">CL</span>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">ClimateLoop</h1>
+            </div>
             <p className="hidden truncate text-xs text-slate-600 sm:block">인터랙티브 기후 및 에너지 시뮬레이터</p>
           </div>
 
@@ -3133,6 +3825,8 @@ export default function Home() {
             onDownloadPdf={handleDownloadPdf}
             isGeneratingPdf={isGeneratingPdf}
           />
+          <TeacherLinkButton shareUrl={shareUrl} />
+          <ShareButton shareUrl={shareUrl} />
         </div>
       </header>
 
@@ -3153,6 +3847,50 @@ export default function Home() {
         </div>
       )}
 
+      {!showDetails && (
+        <BeginnerWizard
+          step={wizardStep}
+          setStep={setWizardStep}
+          selectedRegion={selectedRegion}
+          selectedWeather={selectedWeather}
+          onRegionChange={handleRegionChange}
+          onWeatherChange={handleWeatherChange}
+          mix={mix}
+          onSliderChange={handleSliderChange}
+          results={results}
+          isCalculating={isCalculating}
+          quizIndex={quizIndex}
+          advanceQuiz={advanceQuiz}
+          onShowDetails={() => setShowDetails(true)}
+          hasSavedSession={hasSavedSession}
+          onResetSession={resetBeginnerSession}
+          teacherMode={teacherMode}
+          teacherTarget={teacherTarget}
+          badges={badges}
+        />
+      )}
+
+      {showDetails && (
+        <div className="w-full max-w-[1600px]">
+          <SimulationContextBar
+            region={selectedRegion}
+            weather={currentScenario.label}
+            score={results?.sustainability_score}
+            isCalculating={isCalculating}
+          />
+        </div>
+      )}
+      <div className="mt-2 w-full max-w-[1600px]">
+        <ComparisonControls
+          selectedRegion={selectedRegion}
+          compareRegion={compareRegion}
+          onChange={(region) => {
+            setCompareRegion(region);
+            setComparison(null);
+          }}
+        />
+      </div>
+
       {/*
         섹션 사이 간격 2.5(10px) → 9(36px).
 
@@ -3161,7 +3899,8 @@ export default function Home() {
         가르는 것은 이 여백 하나뿐이다 — 카드 사이 간격(8px)보다 네 배 넓어야
         "다른 묶음"으로 읽힌다. 같은 이유로 섹션 제목도 카드 제목보다 크다.
       */}
-      <div className="w-full max-w-[1600px] space-y-9">
+      {showDetails && <div className="w-full max-w-[1600px] space-y-9">
+        <RegionComparisonCard comparison={comparison} regionA={selectedRegion} regionB={compareRegion ?? ''} onClose={() => setCompareRegion(null)} />
         {/*
           ── 파이프라인 그룹 ──
 
@@ -3291,6 +4030,8 @@ export default function Home() {
                   carbon={results?.carbon_emissions}
                   carbonPlanned={results?.carbon_planned}
                   liveScenario={liveScenario}
+                  weatherSnapshot={weatherSnapshot}
+                  climateNormals={climateNormals}
                 />
 
                 {/*
@@ -3504,7 +4245,7 @@ export default function Home() {
           컨테이너 밖에 두면 넓은 화면에서 목록만 화면 끝까지 늘어난다.
         */}
         <DataSources />
-      </div>
+      </div>}
 
       {/*
         PDF 전용 리포트 — 화면 밖(left:-9999px)에 렌더된다.
