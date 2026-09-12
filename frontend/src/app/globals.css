@@ -312,6 +312,26 @@ input[type='number'] {
 }
 
 /*
+ * 완료 카드 점수 숫자의 등장 애니메이션 — 3단계 진입 한 번만.
+ *
+ * "끝났다"는 느낌이 약하다는 피드백 대응. 커지는 방향(scale-up)은 과하게 튀므로
+ * 약간 아래에서 위로 올라오며 페이드인하는 쪽으로 둔다. 0.45초·한 번만 재생되고,
+ * 점수가 바뀔 때마다 key={score} 리마운트로 다시 뛴다(조작 피드백으로도 자연스럽다).
+ * 참조는 Tailwind 임의 값(motion-safe:animate-[climateloop-score-pop_0.45s_ease-out]) — 
+ * "동작 줄이기" 사용자에게는 motion-safe: 가 애니메이션을 빼준다.
+ */
+@keyframes climateloop-score-pop {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
  * 지도 저작자 표시(Leaflet attribution).
  *
  * 지도 칸이 좁아지면서 "© OpenStreetMap contributors" 가 두 줄로 접히고, 둘째

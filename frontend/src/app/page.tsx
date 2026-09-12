@@ -30,7 +30,7 @@ import {
   SuitabilityBasis,
   WeatherInfo,
   WeatherSnapshot,
-    ClimateNormals,
+  ClimateNormals,
   GRID_STATUS_LABELS,
   MIX_COLORS,
   MIX_LABELS,
@@ -43,7 +43,7 @@ import { QUIZ_POOL, pickNextQuizIndex } from './components/energyQuiz';
 
 import { Sun, Wind, Droplets, Flame, CloudRain, CloudLightning, Snowflake, ShieldAlert, Download, Sparkles, Zap, CircleAlert, Send, X, MapPin, Gauge, Copy, Check, Award, GraduationCap, ArrowUp, ChevronDown } from 'lucide-react';
 
-// 아이콘 색은 SOURCE_COLORS에서 가져온다. 지도 오버레이의 원형 차트와 같은 색이라야
+// 아이콘 색은 SOURCE_COLORS에서 가져온다. 지도 오버레이의 원형 차트와 같은 색이어야
 // 같은 화면에 뜬 두 표현이 같은 발전원을 가리킨다는 것이 색만으로 읽힌다.
 const SOURCE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   '태양광': Sun,
@@ -233,9 +233,9 @@ const BEGINNER_SESSION_KEY = 'climateloop-beginner-session-v1';
 const BADGES_STORAGE_KEY = 'climateloop-learning-badges-v1';
 
 const LEARNING_BADGES = [
-  { id: 'explorer', label: '탐험 시작', description: '지역과 날씨를 골랐어요.' },
-  { id: 'mixer', label: '에너지 요리사', description: '에너지 믹스를 직접 바꿨어요.' },
-  { id: 'goal', label: '목표 도착', description: '지속 가능성 목표에 도착했어요.' },
+  { id: 'explorer', label: '탐험 시작', condition: '다른 지역이나 날씨를 선택하면 얻어요.' },
+  { id: 'mixer', label: '에너지 요리사', condition: '에너지 비율을 바꾸면 얻어요. (슬라이더 · 다음 단계 적용하기)' },
+  { id: 'goal', label: '목표 달성', condition: '지속 가능성 점수가 목표 점수에 도달하면 얻어요.' },
 ] as const;
 
 /** 화면에 띄울 한 줄짜리 원인 문구로 바꾼다. 상세 내용은 콘솔에 남긴다. */
@@ -340,6 +340,81 @@ function AiSourceBadge({ source }: { source: AiSource }) {
     >
       {isLlm ? <Sparkles className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
       {isLlm ? 'AI 생성' : '즉시 요약'}
+    </span>
+  );
+}
+
+/**
+ * 목표 달성의 단일 토큰 — 초록 한 가지.
+ *
+ * "목표 점수에 도착했어요!"(완료 카드 축하 박스, 에메랄드) / "목표 도착"(학습 배지,
+ * 노란색) / "목표 달성"(다음 단계 카드, 초록)처럼 같은 의미를 단어·색·형태 각각으로
+ * 말하고 있었다. 문구는 "목표 달성", 색은 아래 초록 하나로 통일하고, 세 자리는 모두
+ * GoalBadge 를 재사용한다. 초록 값은 EnergyQuizCard 정답 표시와 공유한다
+ * (bg-green-50 / border-green-200 / text-green-800, 대비 6.81:1).
+ */
+const GOAL_ACHIEVED_CLASSES = 'bg-green-50 border-green-200 text-green-800';
+
+/**
+ * 목표 달성 배지. 문구·색을 하드코딩한다 — props 로 바꾸게 두면 다시 제각각이 된다.
+ * 크기는 쓰는 자리(다음 단계 카드의 10px 자리 / 학습 배지·축하 박스의 기본 자리)만 고른다.
+ */
+function GoalBadge({ size = 'sm', title, className = '' }: { size?: 'xs' | 'sm'; title?: string; className?: string }) {
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold shrink-0 ${GOAL_ACHIEVED_CLASSES} ${size === 'xs' ? 'text-[10px]' : 'text-xs'} ${className}`}
+    >
+      <Check className={size === 'xs' ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5'} aria-hidden="true" />
+      목표 달성
+    </span>
+  );
+}
+
+/**
+ * 학습 배지의 획득 조건 툴팁 래퍼.
+ *
+ * 배지는 순수 표시 전용이다 — 눌러도 이동·동작이 없으므로 <button>이 아니라
+ * <span>을 쓰고, 클릭 가능해 보이는 pointer 대신 cursor-help 를 준다.
+ * 네이티브 title 만 있던 시절에는 데스크톱 호버에서만 조건이 보였고 모바일 탭·
+ * 키보드에서는 확인할 길이 없었다. tabIndex={0} + group-focus 로 탭·포커스에도
+ * 같은 툴팁이 열리고, aria-label·aria-describedby 로 조건이 스크린리더에 읽힌다.
+ */
+function BadgeTip({
+  id,
+  label,
+  condition,
+  unlocked,
+  children,
+}: {
+  id: string;
+  label: string;
+  condition: string;
+  unlocked: boolean;
+  children: React.ReactNode;
+}) {
+  const tipId = `badge-tip-${id}`;
+  return (
+    <span
+      tabIndex={0}
+      role="img"
+      aria-label={`${label} 배지 — ${condition} (${unlocked ? '획득함' : '아직 미획득'})`}
+      aria-describedby={tipId}
+      className="group/badge relative inline-flex cursor-help rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+    >
+      {children}
+      <span
+        role="tooltip"
+        id={tipId}
+        className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-52 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg bg-slate-800 px-3 py-2 text-left shadow-lg opacity-0 transition-opacity duration-150 group-hover/badge:opacity-100 group-focus/badge:opacity-100"
+      >
+        <span className="block text-xs font-bold text-white">
+          {label} · {unlocked ? '획득함' : '아직 미획득'}
+        </span>
+        <span className="mt-0.5 block text-[11px] leading-snug text-slate-200">{condition}</span>
+        <span className="mt-1 block text-[10px] text-slate-400">표시 전용 — 눌러도 이동하지 않아요.</span>
+        <span aria-hidden="true" className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-800" />
+      </span>
     </span>
   );
 }
@@ -1704,7 +1779,7 @@ function NextActionCard({
       실행하는 버튼도 브랜드 색이다. 테두리와 버튼이 같은 계열이라 카드 전체가
       하나의 행동 단위로 읽힌다.
     */
-    <div className="h-full bg-white p-3 rounded-lg shadow-card border border-brand-200">
+    <div id={NEXT_ACTION_CARD_ID} className="h-full scroll-mt-24 bg-white p-3 rounded-lg shadow-card border border-brand-200">
       <div className="flex justify-between items-center mb-2 gap-2">
         <h2 className="text-base font-semibold text-slate-900">다음 단계</h2>
         {showApplied && (
@@ -1748,10 +1823,9 @@ function NextActionCard({
               일반 기준 4.5:1 을 넘어야 하고, 6.81 은 그것을 넘어 AAA(7:1)에 근접한다.
               종전 brand 조합은 8.88:1 이었으니 대비는 낮아지지만 기준 안쪽이다.
             */}
+            {/* 목표 달성 여부는 GoalBadge 하나로만 말한다 — 문구·색의 단일 소스. */}
             {nextAction.reaches_goal && (
-              <span className="text-[10px] font-semibold text-green-800 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full shrink-0">
-                목표 달성
-              </span>
+              <GoalBadge size="xs" />
             )}
           </div>
 
@@ -1832,6 +1906,22 @@ const FACTOR_STATUS_STYLES: Record<FactorStatus, { dot: string; value: string }>
 
 /** "왜 이 점수인가요?" 카드의 앵커. "다음 단계" 카드의 링크가 이걸 가리킨다. */
 const FACTOR_BREAKDOWN_ID = 'score-factors';
+
+/**
+ * "다음 단계" 카드의 앵커. 완료 카드(초보자 위자드 3단계 "다음에 해볼 일")의
+ * 링크가 이걸 가리킨다.
+ *
+ * 추천 문구(reason)의 단일 소스는 백엔드 `results.next_action` 하나뿐이다.
+ * 전체 문구 + 적용하기 버튼은 이 카드에서만 그리고, 완료 카드에서는 짧은
+ * 요약 + 여기로 스크롤하는 링크만 둔다. 두 곳에 같은 문구를 전부 그리면
+ * 같은 추천이 서로 다른 UI로 중복 노출된다.
+ */
+const NEXT_ACTION_CARD_ID = 'next-action';
+
+/** 완료 카드에 쓰는 한 줄 요약. 전체 reason이 아니라 축 + 변화폭만 말한다. */
+function nextActionTeaser(action: NextAction): string {
+  return `${action.lever_label} ${formatDelta(action.delta)}`;
+}
 
 /**
  * 감점 요인 세 줄(탄소 배출 / 전력망 안정 / 지역 적합도).
@@ -2574,11 +2664,31 @@ function LearningBadges({ unlocked }: { unlocked: string[] }) {
     <div className="flex flex-wrap gap-2" aria-label="학습 배지">
       {LEARNING_BADGES.map((badge) => {
         const isUnlocked = unlocked.includes(badge.id);
+        // 목표 배지는 달성 상태도 말도 색도 GoalBadge 와 같은 토큰을 쓴다 —
+        // 노란색(amber) 별도 계열을 두면 "목표 달성"이 두 가지 빛깔이 된다.
+        // Award 아이콘은 진행형 과제(탐험·요리사)의 표시로 남기고, 목표만 체크 배지로 갈아탄다.
+        // 조건은 BadgeTip 툴팁이 말한다 — 네이티브 title 은 모바일 탭에서 안 열린다.
+        if (badge.id === 'goal') {
+          return (
+            <BadgeTip key={badge.id} id={badge.id} label={badge.label} condition={badge.condition} unlocked={isUnlocked}>
+              {isUnlocked ? (
+                <GoalBadge className="px-3 py-1.5 text-xs font-bold" />
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-transparent px-3 py-1.5 text-xs font-bold bg-slate-100 text-slate-400">
+                  <Award className="h-3.5 w-3.5 text-slate-300" aria-hidden="true" />
+                  {badge.label}
+                </span>
+              )}
+            </BadgeTip>
+          );
+        }
         return (
-          <span key={badge.id} title={badge.description} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${isUnlocked ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>
-            <Award className={`h-3.5 w-3.5 ${isUnlocked ? 'text-amber-600' : 'text-slate-300'}`} aria-hidden="true" />
-            {badge.label}
-          </span>
+          <BadgeTip key={badge.id} id={badge.id} label={badge.label} condition={badge.condition} unlocked={isUnlocked}>
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${isUnlocked ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>
+              <Award className={`h-3.5 w-3.5 ${isUnlocked ? 'text-amber-600' : 'text-slate-300'}`} aria-hidden="true" />
+              {badge.label}
+            </span>
+          </BadgeTip>
         );
       })}
     </div>
@@ -2598,7 +2708,10 @@ function BeginnerWizard({
   isCalculating,
   quizIndex,
   advanceQuiz,
+  quizAnswer,
+  onQuizAnswer,
   onShowDetails,
+  onShowNextAction,
   detailsOpen,
   hasSavedSession,
   onResetSession,
@@ -2618,7 +2731,11 @@ function BeginnerWizard({
   isCalculating: boolean;
   quizIndex: number;
   advanceQuiz: () => void;
+  quizAnswer: number | null;
+  onQuizAnswer: (index: number) => void;
   onShowDetails: () => void;
+  /** 완료 카드 "다음에 해볼 일" 링크 — 상세 대시보드를 펴고 "다음 단계" 카드로 스크롤한다. */
+  onShowNextAction: () => void;
   detailsOpen: boolean;
   hasSavedSession: boolean;
   onResetSession: () => void;
@@ -2645,7 +2762,15 @@ function BeginnerWizard({
             <p className="text-sm font-bold text-emerald-700">ClimateLoop 배움 여행</p>
             <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">내가 고른 에너지, 지구는 어떻게 느낄까?</h2>
           </div>
-          <span className="hidden rounded-full bg-white/75 px-3 py-1.5 text-xs font-bold text-slate-600 sm:block">3분 체험</span>
+          {/* 진행 단계에 따라 바뀌는 상태 배지 — 3단계(완료)에선 "3분 체험"을 벗는다. */}
+          {step >= 3 ? (
+            <span role="status" className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1.5 text-xs font-bold text-green-800">
+              <Check className="h-3.5 w-3.5" aria-hidden="true" />
+              완료
+            </span>
+          ) : (
+            <span className="hidden rounded-full bg-white/75 px-3 py-1.5 text-xs font-bold text-slate-600 sm:block">3분 체험</span>
+          )}
         </div>
         <div className="mt-6 grid grid-cols-3 gap-2" aria-label="학습 단계">
           {['지역 고르기', '에너지 바꾸기', '결과와 퀴즈'].map((label, index) => {
@@ -2658,10 +2783,25 @@ function BeginnerWizard({
             );
           })}
         </div>
+        {/*
+          전체 초기화 — 저장된 세션으로 복귀한 사용자에게만 보인다.
+          resetBeginnerSession 하나만 이 일을 한다: 단계→1, 지역→서울, 날씨→맑음,
+          비교→없음, 믹스→33.3/33.3/33.4, 배지·localStorage 비움.
+          하단의 "이전 단계"/"1단계부터"는 단계만 옮기고 선택값을 건드리지 않으므로
+          라벨을 겹치지 않게 한다 ("처음부터"는 전체 초기화가 아니다).
+        */}
         {hasSavedSession && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-slate-600" role="status">
-            <span>지난 실험을 이어서 보고 있어요.</span>
-            <button type="button" onClick={onResetSession} className="font-bold text-emerald-700 underline underline-offset-2">처음부터</button>
+            <span>지난 실험을 이어서 보고 있어요. (지역·에너지 유지 중)</span>
+            <button
+              type="button"
+              onClick={onResetSession}
+              title="지역·날씨·에너지 믹스·배지를 모두 초기값으로 되돌립니다"
+              aria-label="전체 초기화: 지역, 날씨, 에너지 믹스, 배지를 모두 초기값으로 되돌리기"
+              className="font-bold text-emerald-700 underline underline-offset-2"
+            >
+              전체 초기화
+            </button>
           </div>
         )}
         {teacherMode && (
@@ -2709,26 +2849,66 @@ function BeginnerWizard({
 
           {step === 3 && (
             <div className="space-y-5">
+              {/*
+                3단계 진입 표시 — "끝났다"는 느낌이 약하다는 피드백 대응.
+                과한 연출 대신 기존 톤 안에서 세 가지만: ① 상위 타이틀 한 줄
+                ("배움 여행 완료" — #6의 헤더 "완료" 배지와 같은 말), ② 점수 카드에
+                ring-1 + shadow 한 겹(카드 그림자 토큰과 같은 얕은 층), ③ 점수 숫자에
+                짧은 등장 애니메이션(아래 score-pop 한 번). 색 팔레트·등급 톤은 그대로.
+              */}
               <div>
-                <p className="text-sm font-bold text-emerald-700">3단계 · 결과를 읽어봐요</p>
+                <p className="text-sm font-bold text-emerald-700">배움 여행 완료 · 3단계 결과를 읽어봐요</p>
                 <h3 className="mt-1 text-3xl font-black tracking-tight text-slate-900">{selectedRegion}의<br />에너지 표정이에요.</h3>
               </div>
-              <div className={`rounded-3xl p-5 ${grade.tone === 'good' ? 'bg-emerald-50' : grade.tone === 'warn' ? 'bg-amber-50' : grade.tone === 'bad' ? 'bg-rose-50' : 'bg-slate-100'}`}>
+              <div className={`rounded-3xl p-5 ring-1 shadow-card ${grade.tone === 'good' ? 'bg-emerald-50 ring-emerald-200' : grade.tone === 'warn' ? 'bg-amber-50 ring-amber-200' : grade.tone === 'bad' ? 'bg-rose-50 ring-rose-200' : 'bg-slate-100 ring-slate-200'}`}>
                 <div className="flex items-center justify-between gap-4">
-                  <div><p className="text-sm font-bold text-slate-600">지구 건강 점수</p><p className="mt-1 text-4xl font-black text-slate-900">{results?.sustainability_score ?? '--'}<span className="ml-1 text-lg">점</span></p></div>
+                  <div><p className="text-sm font-bold text-slate-600">지구 건강 점수</p><p key={results?.sustainability_score ?? 'empty'} className="mt-1 text-4xl font-black text-slate-900 motion-safe:animate-[climateloop-score-pop_0.45s_ease-out]">{results?.sustainability_score ?? '--'}<span className="ml-1 text-lg">점</span></p></div>
                   <span className={`rounded-full px-3 py-2 text-sm font-black ${grade.tone === 'good' ? 'bg-emerald-500 text-white' : grade.tone === 'warn' ? 'bg-amber-400 text-amber-950' : 'bg-rose-400 text-white'}`}>{grade.label}</span>
                 </div>
                 {teacherMode && <p className="mt-2 text-xs font-bold text-slate-600">미션 목표: {teacherTarget}점 · {results && results.sustainability_score >= teacherTarget ? '달성' : '아직 도전 중'}</p>}
                 <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-700">{grade.message}</p>
               </div>
+              {/*
+                축하 박스의 "도착했어요" 문구와 에메랄드 색을 버린다 — 목표 달성을
+                말하는 말·색은 GoalBadge 하나뿐이다. 박스는 축하 자리의 크기만 맡고,
+                말과 색은 배지와 같은 토큰(GOAL_ACHIEVED_CLASSES)을 쓴다. 흰 원+체크
+                장식도 뺀다 — GoalBadge 안에 체크가 있어 중복이다.
+              */}
               {results && (teacherMode ? results.sustainability_score >= teacherTarget : results.goal?.achieved) && (
-                <div className="flex items-center gap-3 rounded-2xl bg-emerald-100 px-4 py-3 text-sm font-black text-emerald-900" role="status" aria-live="polite">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white" aria-hidden="true"><Check className="h-4 w-4 text-emerald-600" /></span>
-                  목표 점수에 도착했어요! 직접 바꿔 만든 결과예요.
+                <div className={`flex items-center gap-2.5 rounded-2xl border px-4 py-3 text-sm font-black ${GOAL_ACHIEVED_CLASSES}`} role="status" aria-live="polite">
+                  <GoalBadge />
+                  <span>직접 바꿔 만든 결과예요.</span>
                 </div>
               )}
               <div className="rounded-2xl bg-[#fff6d8] p-4"><p className="text-xs font-bold text-amber-800">쉽게 말하면</p><p className="mt-1 text-sm font-semibold leading-relaxed text-slate-700">{metaphor}</p><p className="mt-2 text-[10px] leading-snug text-slate-500">※ 공식적인 나무·자동차 환산값이 아니라, 이 시뮬레이션 안에서 상대적인 부담을 이해하기 위한 표현이에요.</p></div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-bold text-slate-500">다음에 해볼 일</p><p className="mt-1 text-sm font-bold text-slate-800">{isCalculating ? '새 조합을 살펴보는 중이에요...' : results?.next_action?.reason ?? '슬라이더를 움직여 다른 결과도 비교해보세요.'}</p></div>
+              {/*
+                "다음에 해볼 일"은 전체 추천 문구를 그대로 그리지 않는다.
+
+                추천의 단일 소스는 results.next_action 하나뿐이고, 전체 문구(reason) +
+                적용하기 버튼은 하단 "결과 해석 > 다음 단계" 카드에서만 보여준다.
+                여기서 같은 reason을 전부 그리면 같은 추천이 서로 다른 UI로 중복 노출된다.
+                그래서 여기서는 축 + 변화폭 한 줄 요약만 언급하고, 누르면 실제 액션이
+                있는 "다음 단계" 카드로 scrollIntoView하는 링크로 둔다.
+              */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-bold text-slate-500">다음에 해볼 일</p>
+                {isCalculating ? (
+                  <p className="mt-1 text-sm font-bold text-slate-800">새 조합을 살펴보는 중이에요...</p>
+                ) : results?.next_action ? (
+                  <p className="mt-1 text-sm font-bold leading-relaxed text-slate-800">
+                    {nextActionTeaser(results.next_action)} 해보면 어떨까요?{' '}
+                    <button
+                      type="button"
+                      onClick={onShowNextAction}
+                      className="font-bold text-emerald-700 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 rounded"
+                    >
+                      다음 단계에서 적용하기
+                    </button>
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm font-bold text-slate-800">슬라이더를 움직여 다른 결과도 비교해보세요.</p>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -2745,7 +2925,7 @@ function BeginnerWizard({
         </div>
       </div>
 
-      {step === 3 && <div className="border-t border-slate-100 bg-[#fbfaf4] p-5 sm:p-8"><EnergyQuizCard key={quizIndex} question={QUIZ_POOL[quizIndex]} onNext={advanceQuiz} /></div>}
+      {step === 3 && <div className="border-t border-slate-100 bg-[#fbfaf4] p-5 sm:p-8"><EnergyQuizCard question={QUIZ_POOL[quizIndex]} onNext={advanceQuiz} selectedIndex={quizAnswer} onAnswer={onQuizAnswer} /></div>}
 
       {step === 3 && <div className="px-5 pb-4 sm:px-8"><LearningBadges unlocked={badges} /></div>}
 
@@ -2760,10 +2940,36 @@ function BeginnerWizard({
           계산 근거 펼치기
           <ChevronDown className={`h-4 w-4 no-underline transition-transform duration-300 ${detailsOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
         </button>
+        {/*
+          단계 이동 — 선택값(지역·날씨·믹스·배지)을 건드리지 않고 단계만 옮긴다.
+          위 "전체 초기화"가 값을 되돌리는 것과 정반대이므로, 라벨에도 "단계"를
+          적어 이동임을 밝힌다. "이전"/"다시 해보기"만 있으면 "무엇이 처음으로
+          돌아가는지"(값인지 위치인지)가 라벨에서 읽히지 않는다.
+        */}
         <div className="flex gap-2">
-          {step > 1 && <button type="button" onClick={() => setStep(step - 1)} className="min-h-11 rounded-xl px-5 text-sm font-bold text-slate-600 hover:bg-slate-100">이전</button>}
+          {step > 1 && (
+            <button
+              type="button"
+              onClick={() => setStep(step - 1)}
+              title="선택값은 유지하고 이전 단계로 돌아갑니다"
+              aria-label="이전 단계로 (지역, 날씨, 에너지 선택 유지)"
+              className="min-h-11 rounded-xl px-5 text-sm font-bold text-slate-600 hover:bg-slate-100"
+            >
+              이전 단계
+            </button>
+          )}
           {step < 3 && <button type="button" onClick={() => setStep(step + 1)} className="min-h-11 rounded-xl bg-emerald-500 px-6 text-sm font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-600">다음으로</button>}
-          {step === 3 && <button type="button" onClick={() => setStep(1)} className="min-h-11 rounded-xl bg-emerald-500 px-6 text-sm font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-600">다시 해보기</button>}
+          {step === 3 && (
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              title="지금 고른 지역·에너지는 그대로 두고 1단계 화면으로 돌아갑니다"
+              aria-label="1단계부터 다시 보기 (지역, 에너지 선택 유지)"
+              className="min-h-11 rounded-xl bg-emerald-500 px-6 text-sm font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-600"
+            >
+              1단계부터
+            </button>
+          )}
         </div>
       </div>
     </section>
@@ -3334,9 +3540,13 @@ export default function Home() {
    * 즉 이벤트 핸들러에서만 일어난다.
    */
   const [quizIndex, setQuizIndex] = useState(0);
+  const [quizAnswer, setQuizAnswer] = useState<number | null>(null);
 
   /** 지역·기후 변경과 "다음 문제" 버튼이 함께 쓰는 문제 교체. */
-  const advanceQuiz = () => setQuizIndex((prev) => pickNextQuizIndex(prev));
+  const advanceQuiz = () => {
+    setQuizAnswer(null);
+    setQuizIndex((prev) => pickNextQuizIndex(prev));
+  };
 
   /* URL 상태를 클라이언트에서 복원하는 hydration 경계다. */
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -3486,6 +3696,8 @@ export default function Home() {
     setAppliedTarget(action.expected_score);
     setIsCalculating(true);
     setMix(action.resulting_mix);
+    // "적용하기"도 믹스를 바꾸는 길이다 — 슬라이더와 같은 'mixer' 배지로 인정한다.
+    unlockBadge('mixer');
   };
 
   // 지역/기상이 바뀌면 배출량 추이를 초기화한다. 조건이 다른 값을 한 선으로 이으면
@@ -3518,6 +3730,8 @@ export default function Home() {
     setEmissionHistory([]);
     setAppliedTarget(null);
     setComparison(null);
+    // 날씨를 바꾸는 것도 탐험이다 — 지역 변경과 같은 'explorer' 배지로 인정한다.
+    unlockBadge('explorer');
     advanceQuiz();
   };
 
@@ -3963,10 +4177,23 @@ export default function Home() {
         isCalculating={isCalculating}
         quizIndex={quizIndex}
         advanceQuiz={advanceQuiz}
+          quizAnswer={quizAnswer}
+          onQuizAnswer={setQuizAnswer}
           detailsOpen={showDetails}
         onShowDetails={() => {
           setShowDetails(true);
             requestAnimationFrame(() => document.getElementById('detailed-analysis')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        }}
+        onShowNextAction={() => {
+          setWizardStep(3);
+          setShowDetails(true);
+          // 상세 대시보드가 펼쳐진 다음 프레임에 "다음 단계" 카드로 이동한다.
+          // 같은 프레임에 스크롤하면 아직 grid-rows-[0fr] 상태라 카드가 접혀 있다.
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() =>
+              document.getElementById(NEXT_ACTION_CARD_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+            ),
+          );
         }}
         hasSavedSession={hasSavedSession}
         onResetSession={resetBeginnerSession}
@@ -4364,11 +4591,7 @@ export default function Home() {
             고른 답과 해설이 저절로 사라진다 — 카드 안에서 useEffect 로 지우는 것보다
             정확하다(문제가 바뀐 그 렌더에 이미 비어 있다).
           */}
-          <EnergyQuizCard
-            key={quizIndex}
-            question={QUIZ_POOL[quizIndex]}
-            onNext={advanceQuiz}
-          />
+          <p className="text-xs text-slate-600">위 결과 카드에서 문제를 풀고 바로 정답 해설을 확인해 보세요.</p>
         </section>
 
         {/*

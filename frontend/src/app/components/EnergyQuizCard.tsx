@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { CircleCheck, CircleX, RefreshCw } from 'lucide-react';
 import { QuizQuestion } from './energyQuiz';
 
@@ -13,21 +13,21 @@ import { QuizQuestion } from './energyQuiz';
 /**
  * 에너지원 기초 상식 퀴즈 카드.
  *
- * 고른 답(selectedIndex)만 안에서 들고 있고, 어떤 문제를 낼지는 바깥이 정한다.
- * 문제가 바뀔 때 고른 답을 지우는 일도 안에서 하지 않는다 — 호출부가 문제 인덱스를
- * key 로 주면 React 가 이 컴포넌트를 새로 마운트하면서 상태를 알아서 비운다.
- * useEffect 로 초기화하는 것보다 정확하다(문제가 바뀐 그 렌더에 이미 비어 있다).
+ * 문제와 선택 상태는 바깥이 관리한다. Wizard 안에서 한 번만 렌더링되며, 부모가
+ * 선택 답을 보관하므로 다른 화면 인스턴스와 피드백이 갈라지지 않는다.
  */
 export default function EnergyQuizCard({
   question,
   onNext,
+  selectedIndex,
+  onAnswer,
 }: {
   question: QuizQuestion;
   /** "다음 문제" — 문제를 고르는 책임은 바깥에 있다. */
   onNext: () => void;
+  selectedIndex: number | null;
+  onAnswer: (index: number) => void;
 }) {
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-
   const answered = selectedIndex !== null;
   const isCorrect = selectedIndex === question.answer;
   const isOx = question.kind === 'ox';
@@ -98,7 +98,7 @@ export default function EnergyQuizCard({
             <button
               key={choice}
               type="button"
-              onClick={() => setSelectedIndex(index)}
+              onClick={() => onAnswer(index)}
               // 한 문제에 한 번만 답한다. 다시 고르게 두면 정답을 본 뒤 눌러 맞힐 수 있다.
               disabled={answered}
               aria-pressed={isPicked}
