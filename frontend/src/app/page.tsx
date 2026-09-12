@@ -41,7 +41,7 @@ import GisangiGreeting from './components/GisangiGreeting';
 import EnergyQuizCard from './components/EnergyQuizCard';
 import { QUIZ_POOL, pickNextQuizIndex } from './components/energyQuiz';
 
-import { Sun, Wind, Droplets, Flame, CloudRain, CloudLightning, Snowflake, ShieldAlert, Download, Sparkles, Zap, CircleAlert, Send, X, MapPin, Gauge, Copy, Check, Award, GraduationCap } from 'lucide-react';
+import { Sun, Wind, Droplets, Flame, CloudRain, CloudLightning, Snowflake, ShieldAlert, Download, Sparkles, Zap, CircleAlert, Send, X, MapPin, Gauge, Copy, Check, Award, GraduationCap, ArrowUp } from 'lucide-react';
 
 // 아이콘 색은 SOURCE_COLORS에서 가져온다. 지도 오버레이의 원형 차트와 같은 색이라야
 // 같은 화면에 뜬 두 표현이 같은 발전원을 가리킨다는 것이 색만으로 읽힌다.
@@ -2150,6 +2150,38 @@ function FactorBreakdown({ factors }: { factors?: Factor[] | null }) {
   );
 }
 
+function CalculationFlow() {
+  const steps = [
+    { number: '01', title: '입력', detail: '지역 · 날씨 · 에너지 믹스' },
+    { number: '02', title: '실제 발전량', detail: '믹스 × 지역 계수 × 기상 배수' },
+    { number: '03', title: '영향 계산', detail: '탄소 배출 · 공급과 수요 · 지역 적합도' },
+    { number: '04', title: '종합 점수', detail: '탄소 55% · 전력망 30% · 적합도 15%' },
+  ];
+
+  return (
+    <section aria-labelledby="calculation-flow-heading" className="bg-white rounded-lg shadow-card p-4 sm:p-5">
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+        <h2 id="calculation-flow-heading" className="text-lg font-bold tracking-tight text-slate-900">계산이 이렇게 이어져요</h2>
+        <p className="text-xs text-slate-600">화면의 숫자는 아래 순서로 같은 입력에서 계산됩니다</p>
+      </div>
+      <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {steps.map((step) => (
+          <li key={step.number} className="min-w-0 rounded-md bg-slate-50 px-3 py-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black tabular-nums text-brand-700">{step.number}</span>
+              <h3 className="text-sm font-bold text-slate-900">{step.title}</h3>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-slate-600">{step.detail}</p>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+        적합도 카드와 `왜 이 점수인가요?`를 펼치면 현재 결과에 사용된 항 단위 숫자와 근거를 확인할 수 있습니다.
+      </p>
+    </section>
+  );
+}
+
 /**
  * 믹스 한 축의 숫자 입력. 슬라이더와 같은 값을 반대편에서 잡는 손잡이다.
  *
@@ -2544,7 +2576,7 @@ function BeginnerWizard({
         : '탄소 부담이 높은 편이에요. 재생에너지를 늘려 변화를 살펴보세요.';
 
   return (
-    <section aria-label="초보자 기후·에너지 학습 활동" className="beginner-wizard w-full max-w-[1100px] overflow-hidden rounded-[2rem] bg-[#fffdf7] shadow-xl shadow-slate-900/10 ring-1 ring-white/80">
+    <section id="beginner-wizard" aria-label="초보자 기후·에너지 학습 활동" className="beginner-wizard w-full max-w-[1100px] overflow-hidden rounded-[2rem] bg-[#fffdf7] shadow-xl shadow-slate-900/10 ring-1 ring-white/80">
       <div className="bg-[#fff6d8] px-5 pb-5 pt-6 sm:px-8 sm:pt-8">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -2656,7 +2688,7 @@ function BeginnerWizard({
       {step === 3 && <div className="px-5 pb-4 sm:px-8"><LearningBadges unlocked={badges} /></div>}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 sm:px-8">
-        <button type="button" onClick={onShowDetails} className="text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4 hover:text-slate-800">자세한 계산 보기</button>
+        <button type="button" onClick={onShowDetails} className="text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4 hover:text-slate-800">계산 근거 펼치기</button>
         <div className="flex gap-2">
           {step > 1 && <button type="button" onClick={() => setStep(step - 1)} className="min-h-11 rounded-xl px-5 text-sm font-bold text-slate-600 hover:bg-slate-100">이전</button>}
           {step < 3 && <button type="button" onClick={() => setStep(step + 1)} className="min-h-11 rounded-xl bg-emerald-500 px-6 text-sm font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-600">다음으로</button>}
@@ -3847,37 +3879,51 @@ export default function Home() {
         </div>
       )}
 
-      {!showDetails && (
-        <BeginnerWizard
-          step={wizardStep}
-          setStep={setWizardStep}
-          selectedRegion={selectedRegion}
-          selectedWeather={selectedWeather}
-          onRegionChange={handleRegionChange}
-          onWeatherChange={handleWeatherChange}
-          mix={mix}
-          onSliderChange={handleSliderChange}
-          results={results}
-          isCalculating={isCalculating}
-          quizIndex={quizIndex}
-          advanceQuiz={advanceQuiz}
-          onShowDetails={() => setShowDetails(true)}
-          hasSavedSession={hasSavedSession}
-          onResetSession={resetBeginnerSession}
-          teacherMode={teacherMode}
-          teacherTarget={teacherTarget}
-          badges={badges}
-        />
-      )}
+      <BeginnerWizard
+        step={wizardStep}
+        setStep={setWizardStep}
+        selectedRegion={selectedRegion}
+        selectedWeather={selectedWeather}
+        onRegionChange={handleRegionChange}
+        onWeatherChange={handleWeatherChange}
+        mix={mix}
+        onSliderChange={handleSliderChange}
+        results={results}
+        isCalculating={isCalculating}
+        quizIndex={quizIndex}
+        advanceQuiz={advanceQuiz}
+        onShowDetails={() => {
+          setShowDetails(true);
+          requestAnimationFrame(() => document.getElementById('detailed-analysis')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        }}
+        hasSavedSession={hasSavedSession}
+        onResetSession={resetBeginnerSession}
+        teacherMode={teacherMode}
+        teacherTarget={teacherTarget}
+        badges={badges}
+      />
 
       {showDetails && (
-        <div className="w-full max-w-[1600px]">
-          <SimulationContextBar
-            region={selectedRegion}
-            weather={currentScenario.label}
-            score={results?.sustainability_score}
-            isCalculating={isCalculating}
-          />
+        <div id="detailed-analysis" className="w-full max-w-[1600px] scroll-mt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SimulationContextBar
+              region={selectedRegion}
+              weather={currentScenario.label}
+              score={results?.sustainability_score}
+              isCalculating={isCalculating}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setShowDetails(false);
+                requestAnimationFrame(() => document.getElementById('beginner-wizard')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+              }}
+              className="flex min-h-11 items-center gap-2 rounded-md px-3 text-xs font-bold text-slate-600 hover:bg-white hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+            >
+              <ArrowUp className="h-4 w-4 rotate-180" aria-hidden="true" />
+              학습 화면으로 돌아가기
+            </button>
+          </div>
         </div>
       )}
       <div className="mt-2 w-full max-w-[1600px]">
@@ -3900,6 +3946,7 @@ export default function Home() {
         "다른 묶음"으로 읽힌다. 같은 이유로 섹션 제목도 카드 제목보다 크다.
       */}
       {showDetails && <div className="w-full max-w-[1600px] space-y-9">
+        <CalculationFlow />
         <RegionComparisonCard comparison={comparison} regionA={selectedRegion} regionB={compareRegion ?? ''} onClose={() => setCompareRegion(null)} />
         {/*
           ── 파이프라인 그룹 ──
