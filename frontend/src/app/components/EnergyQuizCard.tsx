@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { CircleCheck, CircleX, RefreshCw } from 'lucide-react';
+import { CircleCheck, CircleX, RefreshCw, RotateCcw } from 'lucide-react';
 import { QuizQuestion } from './energyQuiz';
 
 /*
@@ -19,12 +19,15 @@ import { QuizQuestion } from './energyQuiz';
 export default function EnergyQuizCard({
   question,
   onNext,
+  onRetry,
   selectedIndex,
   onAnswer,
 }: {
   question: QuizQuestion;
   /** "다음 문제" — 문제를 고르는 책임은 바깥에 있다. */
   onNext: () => void;
+  /** "다시 풀기" — 같은 문제를 초기 상태로 되돌린다. 오답일 때만 노출된다. */
+  onRetry: () => void;
   selectedIndex: number | null;
   onAnswer: (index: number) => void;
 }) {
@@ -160,6 +163,22 @@ export default function EnergyQuizCard({
             >
               {question.explanation}
             </p>
+            {/*
+              오답일 때만 "다시 풀기"를 둔다. 정답이면 복습할 이유가 없고,
+              버튼이 하나 더 있으면 다음 문제로의 흐름만 흐려진다.
+              위계: "다음 문제"(상단, 진한 테두리 주버튼)는 그대로 두고,
+              여기는 텍스트 링크급 보조 버튼으로 둬 헷갈리지 않게 한다.
+            */}
+            {!isCorrect && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 rounded"
+              >
+                <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                다시 풀기
+              </button>
+            )}
           </div>
         </div>
       )}

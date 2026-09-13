@@ -184,9 +184,17 @@ function LevelStepper({ level }: { level?: LevelState | null }) {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm font-medium text-slate-600">학습 단계</span>
-        <span className="text-sm font-bold text-slate-900">
+      {/*
+        좁은 화면(320px) 방어: 헤더 두 조각이 맞붙지 않게 gap을 두고, 오른쪽 현재
+        단계는 줄바꿈 시에도 오른쪽 정렬을 유지한다. 한글은 음절 중간에서 끊길 수
+        있어(예: '저탄소' / '진입') keep-all로 단어 단위 줄바꿈만 허용한다.
+        참고로 겹침·벗어남 자체는 구조상 없다 — 헤더와 안내는 진행바를 사이에 둔
+        일반 블록 흐름이라 겹칠 수 없고, 320px에서도 헤더 합(약 200px)이 카드
+        내용폭(약 272px) 안에 들어간다. 아래는 줄바꿈이 일어나는 경우의 모양 대비용이다.
+      */}
+      <div className="flex justify-between items-center gap-2 mb-2">
+        <span className="text-sm font-medium text-slate-600 shrink-0">학습 단계</span>
+        <span className="text-sm font-bold text-slate-900 text-right break-keep">
           {level ? `${level.current.name} (${currentId}/${total})` : '--'}
         </span>
       </div>
@@ -202,7 +210,11 @@ function LevelStepper({ level }: { level?: LevelState | null }) {
         ))}
       </div>
 
-      <p className="text-xs text-slate-600 mt-1.5">
+      {/*
+        안내 줄바꿈: 긴 이름도 단어 중간에서 끊기지 않게 keep-all. leading을
+        붙여 두 줄이 되면 줄 사이가 붙지 않게 한다.
+      */}
+      <p className="text-xs text-slate-600 mt-1.5 leading-relaxed break-keep">
         {!level
           ? '계산 중...'
           : level.next
@@ -235,7 +247,7 @@ const BADGES_STORAGE_KEY = 'climateloop-learning-badges-v1';
 
 const LEARNING_BADGES = [
   { id: 'explorer', label: '탐험 시작', condition: '다른 지역이나 날씨를 선택하면 얻어요.' },
-  { id: 'mixer', label: '에너지 요리사', condition: '에너지 비율을 바꾸면 얻어요. (슬라이더 · 다음 단계 적용하기)' },
+  { id: 'mixer', label: '에너지 요리사', condition: '에너지 비율을 바꾸면 얻어요. (슬라이더 · 추천 적용하기)' },
   { id: 'goal', label: '목표 달성', condition: '지속 가능성 점수가 목표 점수에 도달하면 얻어요.' },
 ] as const;
 
@@ -1263,7 +1275,7 @@ function Accordion({
   }, [isOpen]);
 
   return (
-    <div ref={rootRef} id={id} data-accordion-group-item={group} className={`scroll-mt-4 ${className}`}>
+    <div ref={rootRef} id={id} data-accordion-group-item={group} className={`scroll-mt-24 ${className}`}>
       <button
         type="button"
         aria-expanded={isOpen}
@@ -1953,10 +1965,12 @@ function NextActionCard({
           <button
             onClick={() => onApply(nextAction)}
             disabled={isCalculating}
-            className="w-full mt-3 px-4 py-2.5 flex items-center justify-center gap-2 bg-brand-600 text-white text-sm font-medium rounded-md hover:bg-brand-700 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+            title="추천 믹스를 실제 시뮬레이션에 확정 반영합니다"
+            aria-label={`추천 적용하기 — ${nextAction.lever_label} ${formatDelta(nextAction.delta)} 반영 시 ${nextAction.expected_score}점 예상`}
+            className="w-full mt-3 px-4 py-2.5 flex items-center justify-center gap-2 bg-brand-600 text-white text-sm font-bold rounded-md hover:bg-brand-700 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
             {isApplying && <Spinner className="w-4 h-4" />}
-            {isApplying ? '적용 중...' : '적용하기'}
+            {isApplying ? '적용 중...' : '이 추천을 시뮬레이션에 적용하기'}
           </button>
         </div>
       )}
@@ -2376,6 +2390,45 @@ function FactorBreakdown({ factors }: { factors?: Factor[] | null }) {
   );
 }
 
+/*
+ * 상세 대시보드 섹션 내비게이션(3순위).
+ *
+ * 파이프라인·탄소·결과·퀴즈·출처가 한 기둥으로 길게 이어져 스크롤이 길다.
+ * 상세 컨테이너 맨 위에 sticky 탭을 두고 각 섹션의 앵커로 바로 이동한다.
+ * top-2 에 붙여 스크롤 중에도 손에 닿고, 가로 스크롤로 좁은 화면에서도
+ * 다섯 탭이 한 줄에 들어간다. 앵커마다 scroll-mt-24 를 두어 탭 바 아래에
+ * 제목이 가리지 않고 걸리게 한다.
+ */
+const DETAIL_SECTION_LINKS: { id: string; label: string }[] = [
+  { id: 'section-pipeline', label: '파이프라인' },
+  { id: 'section-carbon', label: '탄소배출 시뮬레이션' },
+  { id: 'section-results', label: '결과 해석' },
+  { id: 'section-quiz', label: '에너지 상식' },
+  { id: 'data-sources', label: '데이터 출처' },
+];
+
+function DetailSectionNav() {
+  return (
+    <nav
+      aria-label="상세 대시보드 섹션 바로가기"
+      className="sticky top-2 z-20 overflow-x-auto rounded-full border border-slate-200 bg-white/95 px-2 py-1.5 shadow-card backdrop-blur"
+    >
+      <ul className="flex items-center gap-1 whitespace-nowrap">
+        {DETAIL_SECTION_LINKS.map((link) => (
+          <li key={link.id}>
+            <a
+              href={`#${link.id}`}
+              className="block rounded-full px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+            >
+              {link.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
 function CalculationFlow() {
   const steps = [
     { number: '01', title: '입력', detail: '지역 · 날씨 · 에너지 믹스' },
@@ -2483,9 +2536,14 @@ function SimulationSummaryCard({
 }) {
   return (
     <div className="h-full bg-white p-3 rounded-lg shadow-card">
-      <div className="flex justify-between items-center mb-2 gap-2">
+      <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
         <h2 className="text-base font-semibold text-slate-900 shrink-0">시뮬레이션 요약</h2>
-        {isCalculating && <UpdatingBadge />}
+        <span className="flex items-center gap-2">
+          <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+            지속가능성 축
+          </span>
+          {isCalculating && <UpdatingBadge />}
+        </span>
       </div>
 
       {/*
@@ -2525,7 +2583,10 @@ function SimulationSummaryCard({
                 aria-label={`${MIX_LABELS[type]} 비중(%)`}
                 value={mix[type]}
                 onChange={(e) => onSliderChange(type, e.target.value)}
-                className="mt-1 w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600"
+                className="mt-1 w-full h-2 rounded-lg appearance-none cursor-pointer accent-brand-600"
+                style={{
+                  background: `linear-gradient(90deg, ${MIX_COLORS[type]} 0 ${mix[type]}%, #e2e8f0 ${mix[type]}% 100%)`,
+                }}
               />
             </div>
           ))}
@@ -2543,14 +2604,55 @@ function SimulationSummaryCard({
       <div className={`pt-2.5 border-t border-slate-200 space-y-2 transition-opacity duration-200 ${isCalculating ? 'opacity-50' : 'opacity-100'}`}>
         {/* Grid Stability */}
         {results?.grid && (
-          <div className="flex justify-between items-start gap-3">
-            <span className="text-sm font-medium text-slate-600 shrink-0">전력망 안정도</span>
-            <span className={`flex items-center gap-1.5 text-sm font-bold text-right ${GRID_STATUS_STYLES[results.grid.status].text}`}>
-              <span className={`w-2 h-2 rounded-full shrink-0 ${GRID_STATUS_STYLES[results.grid.status].dot}`} />
-              {results.grid.label}
-            </span>
+          <div className="space-y-1">
+            <div className="flex justify-between items-start gap-3">
+              <span className="text-sm font-medium text-slate-600 shrink-0">
+                전력망 안정도
+                <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-bold text-slate-500">
+                  안정성 축
+                </span>
+              </span>
+              <span className={`flex items-center gap-1.5 text-sm font-bold text-right ${GRID_STATUS_STYLES[results.grid.status].text}`}>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${GRID_STATUS_STYLES[results.grid.status].dot}`} />
+                {results.grid.label}
+              </span>
+            </div>
+            {results.grid.status !== 'stable' && results?.sustainability_score != null && results.sustainability_score >= 70 && (
+              <p className="flex items-center justify-end gap-1.5 text-[11px] font-semibold leading-snug text-amber-800">
+                <CircleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                종합 점수는 높지만 전력망은 {GRID_STATUS_LABELS[results.grid.status]} — 아래 「다음 단계」를 먼저 확인하세요
+              </p>
+            )}
           </div>
         )}
+
+        {/*
+          색상 범례(1순위).
+          이 카드에는 역할이 다른 두 색 문법이 함께 있다 — 믹스 비중(값의 종류)과
+          상태 신호등(좋음/주의/나쁨). 같은 자리에서 초록·빨강이 다른 뜻으로
+          보이지 않도록, 각 색이 무엇을 뜻하는지 이 한 줄에서 명시한다.
+        */}
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-100 pt-2 text-[11px] leading-snug text-slate-500">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: MIX_COLORS.renewable }} aria-hidden="true" />
+            재생
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: MIX_COLORS.nuclear }} aria-hidden="true" />
+            원자력
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: MIX_COLORS.fossil }} aria-hidden="true" />
+            화석
+          </span>
+          <span aria-hidden="true" className="text-slate-300">|</span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+            <span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden="true" />
+            <span className="h-2 w-2 rounded-full bg-rose-500" aria-hidden="true" />
+            전력망 상태
+          </span>
+        </p>
 
         {/* Goal Progress */}
         <GoalProgress goal={results?.goal} />
@@ -2707,7 +2809,10 @@ function BeginnerMixSlider({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="beginner-range h-3 w-full cursor-pointer appearance-none rounded-full"
-        style={{ accentColor: color }}
+        style={{
+          accentColor: color,
+          background: `linear-gradient(90deg, ${color} 0 ${Math.round(value)}%, #e7ece8 ${Math.round(value)}% 100%)`,
+        }}
         aria-label={`${label} 비율`}
         aria-valuetext={`${Math.round(value)}퍼센트`}
       />
@@ -2786,6 +2891,7 @@ function BeginnerWizard({
   advanceQuiz,
   quizAnswer,
   onQuizAnswer,
+  onQuizRetry,
   onShowDetails,
   onShowNextAction,
   detailsOpen,
@@ -2809,6 +2915,7 @@ function BeginnerWizard({
   advanceQuiz: () => void;
   quizAnswer: number | null;
   onQuizAnswer: (index: number) => void;
+  onQuizRetry: () => void;
   onShowDetails: () => void;
   /** 완료 카드 "다음에 해볼 일" 링크 — 상세 대시보드를 펴고 "다음 단계" 카드로 스크롤한다. */
   onShowNextAction: () => void;
@@ -2938,9 +3045,23 @@ function BeginnerWizard({
               </div>
               <div className={`rounded-3xl p-5 ring-1 shadow-card ${grade.tone === 'good' ? 'bg-emerald-50 ring-emerald-200' : grade.tone === 'warn' ? 'bg-amber-50 ring-amber-200' : grade.tone === 'bad' ? 'bg-rose-50 ring-rose-200' : 'bg-slate-100 ring-slate-200'}`}>
                 <div className="flex items-center justify-between gap-4">
-                  <div><p className="text-sm font-bold text-slate-600">지구 건강 점수</p><p key={results?.sustainability_score ?? 'empty'} className="mt-1 text-4xl font-black text-slate-900 motion-safe:animate-[climateloop-score-pop_0.45s_ease-out]">{results?.sustainability_score ?? '--'}<span className="ml-1 text-lg">점</span></p></div>
+                  <div>
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-600">
+                      지구 건강 점수
+                      <span className="rounded bg-white/70 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+                        지속가능성 축
+                      </span>
+                    </p>
+                    <p key={results?.sustainability_score ?? 'empty'} className="mt-1 text-4xl font-black text-slate-900 motion-safe:animate-[climateloop-score-pop_0.45s_ease-out]">{results?.sustainability_score ?? '--'}<span className="ml-1 text-lg">점</span></p>
+                  </div>
                   <span className={`rounded-full px-3 py-2 text-sm font-black ${grade.tone === 'good' ? 'bg-emerald-500 text-white' : grade.tone === 'warn' ? 'bg-amber-400 text-amber-950' : 'bg-rose-400 text-white'}`}>{grade.label}</span>
                 </div>
+                {results?.grid && results.grid.status !== 'stable' && (
+                  <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-white/70 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-amber-800">
+                    <CircleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    단, 전력망은 {GRID_STATUS_LABELS[results.grid.status]} — 안정성 축은 아래 「결과 해석」에서 확인하세요
+                  </p>
+                )}
                 {teacherMode && <p className="mt-2 text-xs font-bold text-slate-600">미션 목표: {teacherTarget}점 · {results && results.sustainability_score >= teacherTarget ? '달성' : '아직 도전 중'}</p>}
                 <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-700">{grade.message}</p>
               </div>
@@ -2976,9 +3097,11 @@ function BeginnerWizard({
                     <button
                       type="button"
                       onClick={onShowNextAction}
-                      className="font-bold text-emerald-700 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 rounded"
+                      title="아래 「결과 해석 · 다음 단계」 카드에 있는 추천 내용과 적용 버튼으로 이동합니다"
+                      className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
-                      다음 단계에서 적용하기
+                      다음 단계 추천 확인하기
+                      <ArrowUp className="h-3.5 w-3.5 rotate-180" aria-hidden="true" />
                     </button>
                   </p>
                 ) : (
@@ -3001,7 +3124,7 @@ function BeginnerWizard({
         </div>
       </div>
 
-      {step === 3 && <div className="border-t border-slate-100 bg-[#fbfaf4] p-5 sm:p-8"><EnergyQuizCard question={QUIZ_POOL[quizIndex]} onNext={advanceQuiz} selectedIndex={quizAnswer} onAnswer={onQuizAnswer} /></div>}
+      {step === 3 && <div className="border-t border-slate-100 bg-[#fbfaf4] p-5 sm:p-8"><EnergyQuizCard question={QUIZ_POOL[quizIndex]} onNext={advanceQuiz} onRetry={onQuizRetry} selectedIndex={quizAnswer} onAnswer={onQuizAnswer} /></div>}
 
       {step === 3 && <div className="px-5 pb-4 sm:px-8"><LearningBadges unlocked={badges} /></div>}
 
@@ -3079,8 +3202,8 @@ function SimulationContextBar({
       <div className="flex items-center gap-3 text-xs text-slate-600">
         <span className="hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
         <Gauge className="h-4 w-4 text-slate-500" aria-hidden="true" />
-        <span>지속 가능성</span>
-        <strong className="tabular-nums text-slate-900">{score == null ? '--' : `${score}점`}</strong>
+        <span>지속가능성 축</span>
+        <strong className="tabular-nums text-slate-900">{score == null ? '계산 중' : `${beginnerGrade(score).label} · 목표까지 ${score >= 70 ? '도달' : `${70 - score}점`}`}</strong>
         <span className={`flex items-center gap-1.5 ${isCalculating ? 'text-brand-700' : 'text-slate-500'}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${isCalculating ? 'animate-pulse bg-brand-600' : 'bg-emerald-500'}`} aria-hidden="true" />
           {isCalculating ? '계산 중' : '최신 결과'}
@@ -4255,6 +4378,7 @@ export default function Home() {
         advanceQuiz={advanceQuiz}
           quizAnswer={quizAnswer}
           onQuizAnswer={setQuizAnswer}
+          onQuizRetry={() => setQuizAnswer(null)}
           detailsOpen={showDetails}
         onShowDetails={() => {
           setShowDetails(true);
@@ -4334,6 +4458,7 @@ export default function Home() {
         "다른 묶음"으로 읽힌다. 같은 이유로 섹션 제목도 카드 제목보다 크다.
       */}
       {showDetails && wizardStep === 3 && <div className="w-full max-w-[1600px] space-y-9">
+        <DetailSectionNav />
         <CalculationFlow />
         <RegionComparisonCard comparison={comparison} regionA={selectedRegion} regionB={compareRegion ?? ''} onClose={() => setCompareRegion(null)} />
         {/*
@@ -4364,7 +4489,7 @@ export default function Home() {
           두 칸의 높이가 비슷해져(약 440px) 남는 여백이 사라지고, 세로 총합이
           970 → 440 + 310 으로 줄어 세 단계가 첫 화면에 함께 들어온다.
         */}
-        <section aria-labelledby="pipeline-heading" className="space-y-2">
+        <section id="section-pipeline" aria-labelledby="pipeline-heading" className="space-y-2 scroll-mt-24">
           {/*
             섹션 머리글 — 제목 text-lg(18px) + 부제 text-xs(12px).
 
@@ -4543,6 +4668,7 @@ export default function Home() {
             시나리오 막대·믹스 곡선이 위아래로 쌓여 790px 이 됐다. 폭을 다 주면 셋이
             나란히 서서 310px 로 접히고, 세 그림을 한눈에 비교할 수 있게 된다.
           */}
+          <div id="section-carbon" className="scroll-mt-24">
           <CarbonEmissionCard
             carbon={results?.carbon_emissions ?? 0}
             history={emissionHistory}
@@ -4551,6 +4677,7 @@ export default function Home() {
             scenarioLabel={currentScenario.label}
             isCalculating={isCalculating}
           />
+          </div>
         </section>
 
         {/*
@@ -4566,7 +4693,7 @@ export default function Home() {
           슬라이더나 숫자 입력을 바꾸면 같은 카드의 점수가, 그리고 위 섹션의 배출량과
           적합도가 함께 움직인다.
         */}
-        <section aria-labelledby="results-heading" className="space-y-2">
+        <section id="section-results" aria-labelledby="results-heading" className="space-y-2 scroll-mt-24">
           <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
             <h2 id="results-heading" className="text-lg font-bold tracking-tight text-slate-900">결과 해석</h2>
             <p className="text-xs text-slate-600">
@@ -4654,7 +4781,7 @@ export default function Home() {
           쓰지 않는 것도 같은 이유다 — 여기서 배우는 것은 이 앱의 사용법이 아니라
           발전 방식 자체다.
         */}
-        <section aria-labelledby="quiz-heading" className="space-y-2">
+        <section id="section-quiz" aria-labelledby="quiz-heading" className="space-y-2 scroll-mt-24">
           <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
             <h2 id="quiz-heading" className="text-lg font-bold tracking-tight text-slate-900">에너지 상식</h2>
             <p className="text-xs text-slate-600">
