@@ -151,7 +151,7 @@ function GoalProgress({ goal }: { goal?: Goal | null }) {
           <span className={`text-lg font-bold ${achieved ? 'text-brand-700' : 'text-slate-900'}`}>
             {goal ? goal.current : '--'}
           </span>
-          <span className="text-xs text-slate-500">/ {goal ? goal.target : '--'}점</span>
+          <span className="text-xs text-slate-500">/ {goal ? formatScore(goal.target) : '--'}점</span>
         </div>
       </div>
 
@@ -166,8 +166,8 @@ function GoalProgress({ goal }: { goal?: Goal | null }) {
         {!goal
           ? '계산 중...'
           : achieved
-            ? `목표 ${goal.target}점을 달성했습니다`
-            : `목표까지 ${goal.gap}점`}
+            ? `목표 ${formatScore(goal.target)}점을 달성했습니다`
+            : `목표까지 ${formatScore(goal.gap)}점`}
       </p>
     </div>
   );
@@ -218,7 +218,7 @@ function LevelStepper({ level }: { level?: LevelState | null }) {
         {!level
           ? '계산 중...'
           : level.next
-            ? `다음 단계 '${level.next.name}'까지 ${level.to_next}점`
+            ? `다음 단계 '${level.next.name}'까지 ${formatScore(level.to_next)}점`
             : '최고 단계에 도달했습니다'}
       </p>
     </div>
@@ -925,6 +925,16 @@ const formatMultiplier = (value: number) => value.toFixed(1);
 const formatPercent = (value: number) => `${Math.round(value)}%`;
 /** 45.0 처럼 뒤에 붙는 0을 떼고 보여준다. */
 const formatIndex = (value: number) => String(Number(value.toFixed(1)));
+
+/*
+ * 점수·차이값 표시용 공통 포맷(2차 개선 #2).
+ *
+ * 70 - 64.1 = 5.9000000000000006 같은 부동소수점 오차가 그대로 노출되던
+ * 버그 대응. 소수 첫째 자리로 반올림한 뒤 Number()로 불필요한 0을 떼어
+ * "5.9"로 보여준다. 결과 해석 카드의 formatSigned 와 같은 규칙이라
+ * 상단 상태바와 하단 카드의 숫자 표기가 어긋나지 않는다.
+ */
+const formatScore = (value: number) => String(Number(value.toFixed(1)));
 
 /** 계수 열의 출처 키. 백엔드 coefficient_source.json 의 covered_sources 값이다. */
 type CoefficientOrigin = 'kpx_file' | 'kea_file' | 'kpx' | 'builtin';
@@ -1873,7 +1883,7 @@ function NextActionCard({
         {showApplied && (
           <span className="flex items-center gap-1 text-[11px] font-semibold text-brand-700 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-full shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            적용 완료 · {currentScore ?? '--'}점
+            적용 완료 · {currentScore == null ? '--' : formatScore(currentScore)}점
           </span>
         )}
       </div>
@@ -1918,9 +1928,9 @@ function NextActionCard({
           </div>
 
           <div className="flex items-center gap-2 text-sm mb-2.5">
-            <span className="text-slate-600">{currentScore ?? '--'}점</span>
+            <span className="text-slate-600">{currentScore == null ? '--' : formatScore(currentScore)}점</span>
             <span className="text-slate-400">→</span>
-            <span className="font-bold text-slate-900">{nextAction.expected_score}점</span>
+            <span className="font-bold text-slate-900">{formatScore(nextAction.expected_score)}점</span>
             <span className="text-xs font-bold text-green-700">
               {formatSigned(nextAction.expected_gain)}점
             </span>
@@ -1966,7 +1976,7 @@ function NextActionCard({
             onClick={() => onApply(nextAction)}
             disabled={isCalculating}
             title="추천 믹스를 실제 시뮬레이션에 확정 반영합니다"
-            aria-label={`추천 적용하기 — ${nextAction.lever_label} ${formatDelta(nextAction.delta)} 반영 시 ${nextAction.expected_score}점 예상`}
+            aria-label={`추천 적용하기 — ${nextAction.lever_label} ${formatDelta(nextAction.delta)} 반영 시 ${formatScore(nextAction.expected_score)}점 예상`}
             className="w-full mt-3 px-4 py-2.5 flex items-center justify-center gap-2 bg-brand-600 text-white text-sm font-bold rounded-md hover:bg-brand-700 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
             {isApplying && <Spinner className="w-4 h-4" />}
@@ -2829,12 +2839,12 @@ function BeginnerClimateScene({ score }: { score?: number }) {
       <span className="climate-cloud climate-cloud-two" aria-hidden="true" />
       <span className="climate-hill climate-hill-back" aria-hidden="true" />
       <span className="climate-hill climate-hill-front" aria-hidden="true" />
-      <div className="relative z-10 flex h-full items-end justify-between p-5 text-white">
+      <div className="relative z-10 flex h-full flex-col justify-end gap-1 p-5 text-white">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.12em] text-white/75">오늘의 지구</p>
-          <p className="mt-1 text-lg font-black">{mood === 'happy' ? '맑고 가벼운 하늘' : mood === 'concerned' ? '조금 무거운 하늘' : '변화 중인 하늘'}</p>
+          <p key={mood} className="mt-1 text-lg font-black motion-safe:animate-[climateloop-score-pop_0.45s_ease-out]">{mood === 'happy' ? '맑고 가벼운 하늘' : mood === 'concerned' ? '조금 무거운 하늘' : '변화 중인 하늘'}</p>
         </div>
-        <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold backdrop-blur">선택에 따라 변해요</span>
+        <p className="text-[11px] font-medium text-white/75">선택에 따라 변해요</p>
       </div>
     </div>
   );
@@ -3117,7 +3127,13 @@ function BeginnerWizard({
           <div className="flex items-end gap-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
             <Image src="/images/gisangi-hello.png" alt="기상이" width={82} height={82} className={`h-20 w-20 shrink-0 object-contain transition-transform duration-300 ${mood === 'happy' ? '-rotate-6' : mood === 'concerned' ? 'rotate-6' : ''}`} />
             <div className="relative rounded-2xl bg-[#e8f7ee] px-4 py-3 text-sm font-bold leading-relaxed text-slate-700">
-              {step === 1 ? `${selectedRegion}을 골랐어요. 이제 에너지 조합을 만들어봐요!` : step === 2 ? grade.message : grade.message}
+              {step === 1
+                ? `${selectedRegion}을 골랐어요. 이제 에너지 조합을 만들어봐요!`
+                : step === 2
+                  ? (results?.next_action
+                    ? `${nextActionTeaser(results.next_action)} — 이 추천을 아래에서 적용하면 ${formatScore(results.next_action.expected_score)}점이 돼요`
+                    : grade.message)
+                  : grade.message}
               <span className="absolute bottom-3 -left-2 h-4 w-4 rotate-45 bg-[#e8f7ee]" aria-hidden="true" />
             </div>
           </div>
@@ -3179,11 +3195,13 @@ function SimulationContextBar({
   region,
   weather,
   score,
+  targetScore,
   isCalculating,
 }: {
   region: string;
   weather: string;
   score?: number;
+  targetScore: number;
   isCalculating: boolean;
 }) {
   return (
@@ -3203,7 +3221,7 @@ function SimulationContextBar({
         <span className="hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
         <Gauge className="h-4 w-4 text-slate-500" aria-hidden="true" />
         <span>지속가능성 축</span>
-        <strong className="tabular-nums text-slate-900">{score == null ? '계산 중' : `${beginnerGrade(score).label} · 목표까지 ${score >= 70 ? '도달' : `${70 - score}점`}`}</strong>
+        <strong className="tabular-nums text-slate-900">{score == null ? '계산 중' : `${beginnerGrade(score).label} · 목표까지 ${score >= targetScore ? '도달' : `${formatScore(targetScore - score)}점`}`}</strong>
         <span className={`flex items-center gap-1.5 ${isCalculating ? 'text-brand-700' : 'text-slate-500'}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${isCalculating ? 'animate-pulse bg-brand-600' : 'bg-emerald-500'}`} aria-hidden="true" />
           {isCalculating ? '계산 중' : '최신 결과'}
@@ -4422,6 +4440,7 @@ export default function Home() {
               region={selectedRegion}
               weather={currentScenario.label}
               score={results?.sustainability_score}
+              targetScore={teacherMode ? teacherTarget : (results?.goal?.target ?? 70)}
               isCalculating={isCalculating}
             />
             <button
