@@ -61,15 +61,20 @@ interface RegionSourceMixProps {
  */
 function BestSourceLine({ best }: { best: BestSourceHint }) {
   return (
-    <p className="mt-1.5 flex items-baseline gap-1.5 rounded-md bg-white px-2 py-1 text-[11px] leading-snug">
-      <ArrowRight aria-hidden="true" className="w-3 h-3 shrink-0 translate-y-px text-slate-500" />
-      <span className="text-slate-600 min-w-0">
-        이 지역엔 <span className="font-bold text-slate-900">{best.source}</span>이 가장 적합
-        {best.runnerUp && best.lead >= 0.5 && (
-          <span className="text-slate-500">
-            {` (2위 ${best.runnerUp}보다 +${Math.round(best.lead)}%p)`}
-          </span>
-        )}
+    <p className="mt-1.5 rounded-md bg-white px-2 py-1 text-[11px] leading-snug">
+      <span className="flex items-baseline gap-1.5">
+        <ArrowRight aria-hidden="true" className="w-3 h-3 shrink-0 translate-y-px text-slate-500" />
+        <span className="text-slate-600 min-w-0">
+          설비 인프라 기준 <span className="font-bold text-slate-900">{best.source}</span>이 가장 적합
+          {best.runnerUp && best.lead >= 0.5 && (
+            <span className="text-slate-500">
+              {` (2위 ${best.runnerUp}보다 +${Math.round(best.lead)}%p)`}
+            </span>
+          )}
+        </span>
+      </span>
+      <span className="mt-0.5 block pl-[18px] text-[10px] text-slate-400">
+        탄소 기준이 아닌 설비 분포 기준
       </span>
     </p>
   );

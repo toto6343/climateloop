@@ -371,15 +371,20 @@ const GOAL_ACHIEVED_CLASSES = 'bg-green-50 border-green-200 text-green-800';
 /**
  * 목표 달성 배지. 문구·색을 하드코딩한다 — props 로 바꾸게 두면 다시 제각각이 된다.
  * 크기는 쓰는 자리(다음 단계 카드의 10px 자리 / 학습 배지·축하 박스의 기본 자리)만 고른다.
+ *
+ * 3차 개선 #3: 같은 초록 배지가 두 가지 자리에서 쓰이는데 의미가 달랐다 —
+ * 학습 배지 칸에서는 "수업 미션(점수 목표) 달성", 다음 단계·축하 박스에서는
+ * "이번 시뮬레이션 결과의 목표 달성". 라벨을 context 로만 갈라 색·아이콘
+ * 규칙(초록 + 체크)은 그대로 둔다.
  */
-function GoalBadge({ size = 'sm', title, className = '' }: { size?: 'xs' | 'sm'; title?: string; className?: string }) {
+function GoalBadge({ size = 'sm', title, className = '', context = 'result' }: { size?: 'xs' | 'sm'; title?: string; className?: string; context?: 'result' | 'mission' }) {
   return (
     <span
       title={title}
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold shrink-0 ${GOAL_ACHIEVED_CLASSES} ${size === 'xs' ? 'text-[10px]' : 'text-xs'} ${className}`}
     >
       <Check className={size === 'xs' ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5'} aria-hidden="true" />
-      목표 달성
+      {context === 'mission' ? '미션 달성' : '이번 결과 목표 달성'}
     </span>
   );
 }
@@ -1349,7 +1354,7 @@ function BestSourceSummary({
           <SourceIcon source={best.source} />
         </span>
         <p className="text-sm text-slate-800 leading-relaxed min-w-0">
-          <span className="font-bold text-slate-900">{region}</span>에 가장 적합한 에너지원:{' '}
+          <span className="font-bold text-slate-900">{region}</span>{' '}설비 인프라 기준 적합 에너지원:{' '}
           <span className="font-bold text-slate-900">
             {best.source} ({formatPercent(best.value)})
           </span>
@@ -1365,6 +1370,9 @@ function BestSourceSummary({
                 {' 높음)'}
               </>
             )}
+          </span>
+          <span className="mt-1 block text-[11px] leading-snug text-slate-500">
+            탄소중립 적합도가 아니라, 이 지역 발전 설비가 어디에 몰려 있는지를 기준으로 고른 결론입니다. 탄소 기준 비교는 위 「탄소배출 시뮬레이션」에서 확인하세요.
           </span>
         </p>
         <span className="ml-auto pl-1 shrink-0">
@@ -2791,6 +2799,21 @@ function beginnerMood(score?: number) {
   return 'concerned';
 }
 
+/*
+ * 기상이 말풍선 전용 격려 멘트(3차 개선 #1).
+ *
+ * 히어로 본문의 grade.message 와 같은 소스를 그대로 그리면 두 위치에 같은
+ * 문장이 겹쳐 보인다. 말풍선은 등급 설명이 아니라 응원·격려 역할만 맡고,
+ * 문구는 mood 에서만 유도해 본문(grade.message / next_action 요약)과
+ * 겹칠 자리가 없게 한다.
+ */
+function gisangiEncouragement(mood: string): string {
+  if (mood === 'happy') return '기특해요! 이 흐름을 이어가요.';
+  if (mood === 'thinking') return '조금만 다듬으면 좋아질 거예요.';
+  if (mood === 'concerned') return '포기하지 마요, 같이 찾아봐요.';
+  return '함께 시작해봐요.';
+}
+
 function BeginnerMixSlider({
   label,
   value,
@@ -2839,12 +2862,21 @@ function BeginnerClimateScene({ score }: { score?: number }) {
       <span className="climate-cloud climate-cloud-two" aria-hidden="true" />
       <span className="climate-hill climate-hill-back" aria-hidden="true" />
       <span className="climate-hill climate-hill-front" aria-hidden="true" />
-      <div className="relative z-10 flex h-full flex-col justify-end gap-1 p-5 text-white">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-white/75">오늘의 지구</p>
-          <p key={mood} className="mt-1 text-lg font-black motion-safe:animate-[climateloop-score-pop_0.45s_ease-out]">{mood === 'happy' ? '맑고 가벼운 하늘' : mood === 'concerned' ? '조금 무거운 하늘' : '변화 중인 하늘'}</p>
-        </div>
-        <p className="text-[11px] font-medium text-white/75">선택에 따라 변해요</p>
+      {/*
+        텍스트 겹침 고정(3차 개선 #2).
+        겹침의 원인은 두 가지였다: ① 텍스트 박스가 h-full flex-col 로 언덕 일러스트와
+        같은 높이를 공유해, 상태 문구가 길어지면 언덕 위로 올라가 구름·태양과 겹쳤고,
+        ② 상태 전환 시 이전 문구가 사라지기 전 새 문구가 같은 자리에 그려져 두 줄이
+        순간적으로 겹쳐 보였다.
+        그래서 텍스트는 하단 고정 높이(min-h-[92px])의 별도 층으로 분리하고,
+        key={mood} 리마운트로 이전 문구를 먼저 내린 뒤 새 문구만 한 번
+        등장시킨다(동시 렌더 없음). 언덕(height 116px)보다 낮은 층이라
+        일러스트 위로 올라갈 자리도 없다.
+      */}
+      <div className="absolute inset-x-0 bottom-0 z-10 flex min-h-[92px] flex-col justify-end gap-0.5 bg-gradient-to-t from-black/25 to-transparent p-5 pt-8 text-white">
+        <p className="text-xs font-bold uppercase tracking-[0.12em] text-white/75">오늘의 지구</p>
+        <p key={mood} className="text-lg font-black leading-tight motion-safe:animate-[climateloop-score-pop_0.45s_ease-out]">{mood === 'happy' ? '맑고 가벼운 하늘' : mood === 'concerned' ? '조금 무거운 하늘' : '변화 중인 하늘'}</p>
+        <p className="text-[11px] font-medium leading-tight text-white/75">선택에 따라 변해요</p>
       </div>
     </div>
   );
@@ -2863,11 +2895,11 @@ function LearningBadges({ unlocked }: { unlocked: string[] }) {
           return (
             <BadgeTip key={badge.id} id={badge.id} label={badge.label} condition={badge.condition} unlocked={isUnlocked}>
               {isUnlocked ? (
-                <GoalBadge className="px-3 py-1.5 text-xs font-bold" />
+                <GoalBadge context="mission" className="px-3 py-1.5 text-xs font-bold" />
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-transparent px-3 py-1.5 text-xs font-bold bg-slate-100 text-slate-400">
                   <Award className="h-3.5 w-3.5 text-slate-300" aria-hidden="true" />
-                  {badge.label}
+                  미션: {badge.label}
                 </span>
               )}
             </BadgeTip>
@@ -3129,11 +3161,7 @@ function BeginnerWizard({
             <div className="relative rounded-2xl bg-[#e8f7ee] px-4 py-3 text-sm font-bold leading-relaxed text-slate-700">
               {step === 1
                 ? `${selectedRegion}을 골랐어요. 이제 에너지 조합을 만들어봐요!`
-                : step === 2
-                  ? (results?.next_action
-                    ? `${nextActionTeaser(results.next_action)} — 이 추천을 아래에서 적용하면 ${formatScore(results.next_action.expected_score)}점이 돼요`
-                    : grade.message)
-                  : grade.message}
+                : gisangiEncouragement(mood)}
               <span className="absolute bottom-3 -left-2 h-4 w-4 rotate-45 bg-[#e8f7ee]" aria-hidden="true" />
             </div>
           </div>
