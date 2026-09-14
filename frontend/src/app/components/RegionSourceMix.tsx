@@ -134,6 +134,15 @@ export function RegionSourceMix({ region, isLoaded, best, dataSource = 'fallback
             </span>
           </p>
         </div>
+        {/*
+          에너지 믹스 기준 명시(개선 #2): 도넛 %가 "지역 설비 기준 · 실제 발전량 반영(추정)"임을
+          짧은 라벨로 밝힌다. 아래 시뮬레이션 요약의 "사용자 조정 믹스"와 숫자가 다른 이유다.
+        */}
+        <p className="mt-1">
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+            지역 설비 기준 · 실제 발전량 반영(추정)
+          </span>
+        </p>
 
         {/* 결론은 발전량(도넛)이 아니라 적합도에서 나오므로 hasData 와 무관하게 뜬다. */}
         {best && <BestSourceLine best={best} />}

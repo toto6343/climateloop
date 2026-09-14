@@ -167,7 +167,9 @@ function GoalProgress({ goal }: { goal?: Goal | null }) {
           ? '계산 중...'
           : achieved
             ? `목표 ${formatScore(goal.target)}점을 달성했습니다`
-            : `목표까지 ${formatScore(goal.gap)}점`}
+            : goal.gap <= 0
+              ? '목표 달성'
+              : `목표까지 ${formatScore(goal.gap)}점`}
       </p>
     </div>
   );
@@ -376,15 +378,19 @@ const GOAL_ACHIEVED_CLASSES = 'bg-green-50 border-green-200 text-green-800';
  * 학습 배지 칸에서는 "수업 미션(점수 목표) 달성", 다음 단계·축하 박스에서는
  * "이번 시뮬레이션 결과의 목표 달성". 라벨을 context 로만 갈라 색·아이콘
  * 규칙(초록 + 체크)은 그대로 둔다.
+ *
+ * 4차 개선 #3: 추천 카드(NextActionCard)는 "이미 달성된 것"이 아니라 "적용하면
+ * 달성되는 것"이라, 현재 결과가 이미 목표를 넘은 상태에서는 같은 뱃지를
+ * 붙이면 헷갈린다. 그때는 뱃지를 생략하거나 아래 유지 문구로 바꾼다.
  */
-function GoalBadge({ size = 'sm', title, className = '', context = 'result' }: { size?: 'xs' | 'sm'; title?: string; className?: string; context?: 'result' | 'mission' }) {
+function GoalBadge({ size = 'sm', title, className = '', context = 'result' }: { size?: 'xs' | 'sm'; title?: string; className?: string; context?: 'result' | 'mission' | 'kept' }) {
   return (
     <span
       title={title}
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold shrink-0 ${GOAL_ACHIEVED_CLASSES} ${size === 'xs' ? 'text-[10px]' : 'text-xs'} ${className}`}
     >
       <Check className={size === 'xs' ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5'} aria-hidden="true" />
-      {context === 'mission' ? '미션 달성' : '이번 결과 목표 달성'}
+      {context === 'mission' ? '미션 달성' : context === 'kept' ? '적용 시에도 목표 유지' : '이번 결과 목표 달성'}
     </span>
   );
 }
@@ -1256,6 +1262,7 @@ function Accordion({
   triggerClassName = '',
   contentClassName = '',
   group,
+  defaultOpen = false,
 }: {
   id?: string;
   label: React.ReactNode;
@@ -1264,8 +1271,14 @@ function Accordion({
   triggerClassName?: string;
   contentClassName?: string;
   group?: string;
+  /**
+   * 부가 섹션 접기(개선 #3): 파이프라인·탄소 시뮬레이션·퀴즈 같은 부가 섹션은
+   * 기본 접힘(false)으로 두고 필요한 사용자만 펼치게 한다. 핵심 요약은
+   * 아코디언 밖에 두어 항상 보인다. 특정 섹션을 처음부터 보여줘야 하면 true.
+   */
+  defaultOpen?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const contentId = id ? `${id}-content` : undefined;
 
@@ -1372,7 +1385,7 @@ function BestSourceSummary({
             )}
           </span>
           <span className="mt-1 block text-[11px] leading-snug text-slate-500">
-            탄소중립 적합도가 아니라, 이 지역 발전 설비가 어디에 몰려 있는지를 기준으로 고른 결론입니다. 탄소 기준 비교는 위 「탄소배출 시뮬레이션」에서 확인하세요.
+            탄소중립 적합도가 아니라, 이 지역 발전 설비가 어디에 몰려 있는지를 기준으로 고른 결론입니다. 탄소 관련 비교는 위 「탄소배출 시뮬레이션」에서 확인하세요.
           </span>
         </p>
         <span className="ml-auto pl-1 shrink-0">
@@ -1871,6 +1884,7 @@ function NextActionCard({
   // "적용 중" 문구는 실제로 적용을 눌렀을 때만 보여준다.
   const isApplying = isCalculating && appliedTarget !== null;
   const showApplied = !isCalculating && appliedTarget !== null;
+  const currentAchieved = currentScore != null && currentScore >= 70;
 
   return (
     /*
@@ -1929,18 +1943,31 @@ function NextActionCard({
               일반 기준 4.5:1 을 넘어야 하고, 6.81 은 그것을 넘어 AAA(7:1)에 근접한다.
               종전 brand 조합은 8.88:1 이었으니 대비는 낮아지지만 기준 안쪽이다.
             */}
-            {/* 목표 달성 여부는 GoalBadge 하나로만 말한다 — 문구·색의 단일 소스. */}
+            {/* 목표 달성 여부는 GoalBadge 하나로만 말한다 — 문구·색의 단일 소스.
+                4차 개선 #3: 현재 결과가 이미 목표를 넘은 상태(currentAchieved)라면
+                같은 "이번 결과" 뱃지를 또 붙이지 않고 "적용 시에도 목표 유지"로
+                의미를 가른다. 추천이 목표에 못 미치면 뱃지를 생략한다. */}
             {nextAction.reaches_goal && (
-              <GoalBadge size="xs" />
+              currentAchieved ? (
+                <GoalBadge size="xs" context="kept" title="현재 이미 목표를 달성했고, 이 추천을 적용해도 목표를 유지합니다" />
+              ) : (
+                <GoalBadge size="xs" />
+              )
             )}
           </div>
 
-          <div className="flex items-center gap-2 text-sm mb-2.5">
-            <span className="text-slate-600">{currentScore == null ? '--' : formatScore(currentScore)}점</span>
-            <span className="text-slate-400">→</span>
-            <span className="font-bold text-slate-900">{formatScore(nextAction.expected_score)}점</span>
-            <span className="text-xs font-bold text-green-700">
-              {formatSigned(nextAction.expected_gain)}점
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm mb-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-500">점수:</span>
+              <span className="text-slate-600 tabular-nums">{currentScore == null ? '--' : formatScore(currentScore)}점</span>
+              <span className="text-slate-400">→</span>
+              <span className="font-bold text-slate-900 tabular-nums">{formatScore(nextAction.expected_score)}점</span>
+              <span className="text-xs font-bold text-green-700 tabular-nums">
+                {formatSigned(nextAction.expected_gain)}점
+              </span>
+            </div>
+            <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">
+              {nextAction.lever_label} {formatDelta(nextAction.delta)}
             </span>
           </div>
 
@@ -2005,6 +2032,82 @@ const GRID_STATUS_STYLES: Record<GridStatus, { dot: string; text: string }> = {
   stable: { dot: 'bg-green-500', text: 'text-green-700' },   // 안정
   surplus: { dot: 'bg-amber-500', text: 'text-amber-800' },  // 과잉 공급 / 출력제한
 };
+
+/**
+ * 점수-리스크 복합 배지(결과 화면 1차 개선 #1·#5).
+ *
+ * 점수가 70점 이상이어도 전력망이 불안정하면 "좋아요"만 보이면 리스크가 가려진다.
+ * 그래서 "76.7점 · 양호하지만 전력망 주의"처럼 점수 카드 자체에 경고 톤(주황/빨강)을
+ * 함께 입힌다. 파스텔 무드를 깨지 않는 선에서 배지 테두리+배경+아이콘으로만 강조하고,
+ * 본문 텍스트와 같은 굵기로 두지 않는다(굵은 글씨 + 배지 + 아이콘 + role="alert").
+ */
+function ScoreRiskBadge({ score, gridStatus }: { score?: number | null; gridStatus?: GridStatus | null }) {
+  const grade = beginnerGrade(score);
+  const hasRisk = gridStatus != null && gridStatus !== 'stable';
+  const riskDetail =
+    gridStatus === 'deficit' ? '(부족 위험)' : gridStatus === 'surplus' ? '(공급 과잉)' : '';
+
+  let statusText = grade.label;
+  if (hasRisk) {
+    if (score != null && score >= 70) {
+      statusText = `양호하지만 전력망 주의${riskDetail}`;
+    } else {
+      statusText = `${grade.label} · 전력망 주의${riskDetail}`;
+    }
+  }
+
+  return (
+    <span
+      role={hasRisk ? 'alert' : undefined}
+      className={`inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold leading-snug ${
+        hasRisk
+          ? gridStatus === 'deficit'
+            ? 'border-red-300 bg-red-50 text-red-900 shadow-xs'
+            : 'border-amber-300 bg-amber-50 text-amber-900 shadow-xs'
+          : 'border-slate-200 bg-white text-slate-600'
+      }`}
+    >
+      {hasRisk && <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+      <span className="tabular-nums">
+        {score == null ? '--' : formatScore(score)}점 · {statusText}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * 전력망 리스크 경고 배지(결과 화면 1차 개선 #1·#5).
+ *
+ * "불안정(전력 부족 위험)" 같은 리스크 텍스트를 본문과 같은 굵기로 두면 첫 스크롤에서
+ * 묻힌다. 배지+아이콘+주황/빨강 계열로 시각적 우선순위를 높이고, 스크린리더에도
+ * role="alert"로 알린다. 점수 카드 바로 아래에 두어 첫 화면에서 보이게 한다.
+ */
+function GridRiskAlert({ status, label, compact = false }: { status: GridStatus; label: string; compact?: boolean }) {
+  if (status === 'stable') return null;
+  return (
+    <p
+      role="alert"
+      className={`flex items-start gap-1.5 rounded-md border font-bold leading-snug ${
+        compact ? 'mt-2 px-2 py-1.5 text-[11px]' : 'mt-2 px-2.5 py-2 text-xs'
+      } ${
+        status === 'deficit'
+          ? 'border-red-300 bg-red-50 text-red-900 shadow-xs'
+          : 'border-amber-300 bg-amber-50 text-amber-900 shadow-xs'
+      }`}
+    >
+      <ShieldAlert className="mt-px h-4 w-4 shrink-0" aria-hidden="true" />
+      <span>
+        <span className="font-black text-slate-900">전력망 안정도: </span>
+        <span className={status === 'deficit' ? 'text-red-950 font-black underline decoration-red-400 underline-offset-2' : 'text-amber-950 font-black underline decoration-amber-400 underline-offset-2'}>
+          {label}
+        </span>
+        <span className="mt-0.5 block text-[11px] font-medium opacity-90">
+          종합 점수와 별개로 먼저 확인하세요 — 아래 「다음 단계」가 이 리스크를 푸는 한 걸음입니다
+        </span>
+      </span>
+    </p>
+  );
+}
 
 const FACTOR_STATUS_STYLES: Record<FactorStatus, { dot: string; value: string }> = {
   good: { dot: 'bg-green-500', value: 'text-green-700' },
@@ -2546,23 +2649,44 @@ function SimulationSummaryCard({
   onSliderChange,
   results,
   isCalculating,
+  nextAction,
+  onApply,
 }: {
   mix: EnergyMixValues;
   onSliderChange: (type: MixKey, value: string) => void;
   results: SimulationResult | null;
   isCalculating: boolean;
+  /**
+   * 상단 요약 CTA(개선 #3): "이 추천을 시뮬레이션에 적용하기"를 하단
+   * 「다음 단계」 카드에만 두면 스크롤해야 보이므로, 요약 카드(핵심 요약)에도
+   * 같은 추천의 짧은 요약 + 적용 버튼을 둔다. 문구 단일 소스는 여전히
+   * results.next_action 하나이며, 여기서 새로 만들지 않는다.
+   */
+  nextAction?: NextAction | null;
+  onApply?: (action: NextAction) => void;
 }) {
   return (
-    <div className="h-full bg-white p-3 rounded-lg shadow-card">
+    <div className={`h-full p-3 rounded-lg shadow-card border transition-colors ${
+      results?.grid && results.grid.status !== 'stable'
+        ? results.grid.status === 'deficit'
+          ? 'bg-red-50/25 border-red-200'
+          : 'bg-amber-50/25 border-amber-200'
+        : 'bg-white border-transparent'
+    }`}>
       <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
         <h2 className="text-base font-semibold text-slate-900 shrink-0">시뮬레이션 요약</h2>
         <span className="flex items-center gap-2">
-          <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-            지속가능성 축
-          </span>
+          <ScoreRiskBadge score={results?.sustainability_score} gridStatus={results?.grid?.status} />
           {isCalculating && <UpdatingBadge />}
         </span>
       </div>
+      {/*
+        리스크 첫 스크롤 노출(개선 #1): 전력망 경고를 카드 맨 아래가 아니라
+        점수 배지 바로 아래로 끌어올린다. stable이면 아무것도 그리지 않는다.
+      */}
+      {results?.grid && results.grid.status !== 'stable' && (
+        <GridRiskAlert status={results.grid.status} label={results.grid.label} />
+      )}
 
       {/*
         에너지 믹스 — 축마다 슬라이더(대강 끌기)와 숫자 입력(정확히 찍기)이 한 줄에
@@ -2576,6 +2700,9 @@ function SimulationSummaryCard({
         */}
         <div className="flex flex-wrap items-baseline gap-x-2 mb-1.5">
           <h3 className="text-sm font-semibold text-slate-700">에너지 믹스</h3>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+            사용자 조정 믹스 · 합계 100%
+          </span>
           <p className="text-[11px] text-slate-600">슬라이더나 숫자를 바꾸면 위 배출·적합도와 아래 점수가 함께 갱신됩니다</p>
         </div>
 
@@ -2620,27 +2747,37 @@ function SimulationSummaryCard({
       </div>
 
       <div className={`pt-2.5 border-t border-slate-200 space-y-2 transition-opacity duration-200 ${isCalculating ? 'opacity-50' : 'opacity-100'}`}>
-        {/* Grid Stability */}
+        {/*
+          전력망 안정도(개선 #5): 상태값을 본문과 같은 굵기로 두지 않고
+          배지+아이콘+주황/빨강 계열로 시각적 우선순위를 높인다.
+          상세 경고는 카드 상단 GridRiskAlert에 이미 노출되므로 여기서는
+          상태 배지만 남기고 문구를 중복하지 않는다.
+        */}
         {results?.grid && (
-          <div className="space-y-1">
-            <div className="flex justify-between items-start gap-3">
-              <span className="text-sm font-medium text-slate-600 shrink-0">
-                전력망 안정도
-                <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-bold text-slate-500">
-                  안정성 축
-                </span>
+          <div className="flex justify-between items-center gap-3">
+            <span className="text-sm font-medium text-slate-600 shrink-0">
+              전력망 안정도
+              <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-bold text-slate-500">
+                안정성 축
               </span>
-              <span className={`flex items-center gap-1.5 text-sm font-bold text-right ${GRID_STATUS_STYLES[results.grid.status].text}`}>
+            </span>
+            <span
+              role={results.grid.status !== 'stable' ? 'alert' : undefined}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-bold ${GRID_STATUS_STYLES[results.grid.status].text} ${
+                results.grid.status === 'stable'
+                  ? 'border-green-200 bg-green-50'
+                  : results.grid.status === 'deficit'
+                    ? 'border-red-300 bg-red-50'
+                    : 'border-amber-300 bg-amber-50'
+              }`}
+            >
+              {results.grid.status !== 'stable' ? (
+                <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              ) : (
                 <span className={`w-2 h-2 rounded-full shrink-0 ${GRID_STATUS_STYLES[results.grid.status].dot}`} />
-                {results.grid.label}
-              </span>
-            </div>
-            {results.grid.status !== 'stable' && results?.sustainability_score != null && results.sustainability_score >= 70 && (
-              <p className="flex items-center justify-end gap-1.5 text-[11px] font-semibold leading-snug text-amber-800">
-                <CircleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                종합 점수는 높지만 전력망은 {GRID_STATUS_LABELS[results.grid.status]} — 아래 「다음 단계」를 먼저 확인하세요
-              </p>
-            )}
+              )}
+              {results.grid.label}
+            </span>
           </div>
         )}
 
@@ -2677,6 +2814,37 @@ function SimulationSummaryCard({
 
         {/* Level Stepper */}
         <LevelStepper level={results?.level} />
+
+        {/*
+          상단 요약 CTA(개선 #3): 하단 「다음 단계」 카드의 적용 버튼을
+          스크롤 없이도 누르게 요약 카드에 같은 추천의 압축본을 둔다.
+          전체 문구(reason)는 하단 카드가 계속 들고 있고, 여기서는
+          한 줄 티저(nextActionTeaser) + 적용 버튼만 둔다.
+        */}
+        {nextAction && onApply && (
+          <div className="mt-2.5 rounded-md border border-brand-200 bg-brand-50/60 p-2.5">
+            <p className="text-[11px] font-bold text-slate-700 leading-snug">
+              다음 한 걸음 · {nextActionTeaser(nextAction)}
+            </p>
+            <p className="mt-1 text-[11px] text-slate-600 tabular-nums">
+              적용 전 {results?.sustainability_score == null ? '--' : formatScore(results.sustainability_score)}점
+              {' → '}
+              적용 후 {formatScore(nextAction.expected_score)}점 ({formatSigned(nextAction.expected_gain)}점)
+            </p>
+            <p className="mt-0.5 text-[11px] font-semibold text-brand-800 tabular-nums">
+              조정 내용: {nextAction.lever_label} {formatDelta(nextAction.delta)}
+            </p>
+            <button
+              type="button"
+              onClick={() => onApply(nextAction)}
+              disabled={isCalculating}
+              aria-label={`추천 적용하기 — ${nextAction.lever_label} ${formatDelta(nextAction.delta)} 반영 시 ${formatScore(nextAction.expected_score)}점 예상`}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-brand-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+            >
+              이 추천을 시뮬레이션에 적용하기
+            </button>
+          </div>
+        )}
       </div>
 
     </div>
@@ -2784,7 +2952,7 @@ function TeacherLinkButton({ shareUrl }: { shareUrl: string }) {
   );
 }
 
-function beginnerGrade(score?: number) {
+function beginnerGrade(score?: number | null) {
   if (score == null) return { label: '계산 중', tone: 'neutral', message: '내 선택이 어떤 변화를 만드는지 곧 보여드릴게요.' };
   if (score >= 85) return { label: '아주 좋아요', tone: 'good', message: '지구가 편안해하는 조합이에요!' };
   if (score >= 70) return { label: '좋아요', tone: 'good', message: '좋은 방향이에요. 한 걸음 더 가볼까요?' };
@@ -2792,7 +2960,7 @@ function beginnerGrade(score?: number) {
   return { label: '도전 중', tone: 'bad', message: '괜찮아요. 슬라이더를 움직이며 답을 찾아봐요.' };
 }
 
-function beginnerMood(score?: number) {
+function beginnerMood(score?: number | null) {
   if (score == null) return 'ready';
   if (score >= 70) return 'happy';
   if (score >= 40) return 'thinking';
@@ -2806,11 +2974,19 @@ function beginnerMood(score?: number) {
  * 문장이 겹쳐 보인다. 말풍선은 등급 설명이 아니라 응원·격려 역할만 맡고,
  * 문구는 mood 에서만 유도해 본문(grade.message / next_action 요약)과
  * 겹칠 자리가 없게 한다.
+ *
+ * 페르소나 통일(개선 #4): 화면 내 모든 기상이 발화는 "잘하고 있어요 /
+ * 괜찮아요 / 함께 가봐요" 톤으로 맞춘다. 인사말(GisangiGreeting)의
+ * "안녕하세요, 저는 기상이예요! 지구를 위한 에너지 조합, 저와 함께 한 걸음씩 완성해 가요."와
+ * 같은 목소리이며, "기특해요" 같은 다른 어른 말투는 쓰지 않는다.
  */
-function gisangiEncouragement(mood: string): string {
-  if (mood === 'happy') return '기특해요! 이 흐름을 이어가요.';
-  if (mood === 'thinking') return '조금만 다듬으면 좋아질 거예요.';
-  if (mood === 'concerned') return '포기하지 마요, 같이 찾아봐요.';
+function gisangiEncouragement(mood: string, gridStatus?: GridStatus | null): string {
+  if (gridStatus && gridStatus !== 'stable') {
+    return '점수는 훌륭하지만 전력망에 주의가 필요해요! 다음 한 걸음으로 함께 균형을 맞춰봐요.';
+  }
+  if (mood === 'happy') return '잘하고 있어요! 깨끗하고 건강한 에너지를 멋지게 만들어가고 있어요.';
+  if (mood === 'thinking') return '좋은 방향으로 가고 있어요. 다음 한 걸음을 함께 가볼까요?';
+  if (mood === 'concerned') return '조금 아쉬워도 괜찮아요. 작은 한 걸음부터 차근차근 함께 시도해봐요!';
   return '함께 시작해봐요.';
 }
 
@@ -2936,6 +3112,7 @@ function BeginnerWizard({
   onQuizRetry,
   onShowDetails,
   onShowNextAction,
+  onApplyNextAction,
   detailsOpen,
   hasSavedSession,
   onResetSession,
@@ -2961,6 +3138,8 @@ function BeginnerWizard({
   onShowDetails: () => void;
   /** 완료 카드 "다음에 해볼 일" 링크 — 상세 대시보드를 펴고 "다음 단계" 카드로 스크롤한다. */
   onShowNextAction: () => void;
+  /** 상단 추천 요약에서 바로 시뮬레이션에 적용하는 핸들러 */
+  onApplyNextAction?: (action: NextAction) => void;
   detailsOpen: boolean;
   hasSavedSession: boolean;
   onResetSession: () => void;
@@ -3060,7 +3239,12 @@ function BeginnerWizard({
           {step === 2 && (
             <div className="space-y-5">
               <div>
-                <p className="text-sm font-bold text-emerald-700">2단계 · 에너지 레시피 만들기</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-emerald-700">2단계 · 에너지 레시피 만들기</p>
+                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                    사용자 조정 믹스 · 합계 100%
+                  </span>
+                </div>
                 <h3 className="mt-1 text-3xl font-black tracking-tight text-slate-900">발전원 비율을<br />살짝 바꿔볼까요?</h3>
                 <p className="mt-2 text-sm text-slate-600">한 가지를 올리면 나머지는 자동으로 맞춰져요.</p>
               </div>
@@ -3085,7 +3269,7 @@ function BeginnerWizard({
                 <p className="text-sm font-bold text-emerald-700">배움 여행 완료 · 3단계 결과를 읽어봐요</p>
                 <h3 className="mt-1 text-3xl font-black tracking-tight text-slate-900">{selectedRegion}의<br />에너지 표정이에요.</h3>
               </div>
-              <div className={`rounded-3xl p-5 ring-1 shadow-card ${grade.tone === 'good' ? 'bg-emerald-50 ring-emerald-200' : grade.tone === 'warn' ? 'bg-amber-50 ring-amber-200' : grade.tone === 'bad' ? 'bg-rose-50 ring-rose-200' : 'bg-slate-100 ring-slate-200'}`}>
+              <div className={`rounded-3xl p-5 ring-1 shadow-card ${results?.grid && results.grid.status !== 'stable' ? (results.grid.status === 'deficit' ? 'bg-red-50/60 ring-red-200' : 'bg-amber-50/60 ring-amber-200') : grade.tone === 'good' ? 'bg-emerald-50 ring-emerald-200' : grade.tone === 'warn' ? 'bg-amber-50 ring-amber-200' : grade.tone === 'bad' ? 'bg-rose-50 ring-rose-200' : 'bg-slate-100 ring-slate-200'}`}>
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-600">
@@ -3096,13 +3280,20 @@ function BeginnerWizard({
                     </p>
                     <p key={results?.sustainability_score ?? 'empty'} className="mt-1 text-4xl font-black text-slate-900 motion-safe:animate-[climateloop-score-pop_0.45s_ease-out]">{results?.sustainability_score ?? '--'}<span className="ml-1 text-lg">점</span></p>
                   </div>
-                  <span className={`rounded-full px-3 py-2 text-sm font-black ${grade.tone === 'good' ? 'bg-emerald-500 text-white' : grade.tone === 'warn' ? 'bg-amber-400 text-amber-950' : 'bg-rose-400 text-white'}`}>{grade.label}</span>
+                  {/*
+                    점수-리스크 복합 배지(개선 #1): "좋아요"만 보이면 전력망 리스크가 가려지므로
+                    리스크가 있을 때는 배지 자체에 경고 톤(주황/빨강)을 함께 입힌다.
+                    예: "76.7점 · 양호하지만 전력망 주의(부족 위험)".
+                  */}
+                  <ScoreRiskBadge score={results?.sustainability_score} gridStatus={results?.grid?.status} />
                 </div>
+                {/*
+                  리스크 첫 스크롤 노출(개선 #1·#5): 경고를 카드 맨 아래가 아니라
+                  점수 바로 아래로 끌어올리고, 배지+아이콘+주황/빨강 계열로 강조한다.
+                  본문과 같은 굵기로 두지 않는다(굵은 글씨 + 테두리 배지 + role="alert").
+                */}
                 {results?.grid && results.grid.status !== 'stable' && (
-                  <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-white/70 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-amber-800">
-                    <CircleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    단, 전력망은 {GRID_STATUS_LABELS[results.grid.status]} — 안정성 축은 아래 「결과 해석」에서 확인하세요
-                  </p>
+                  <GridRiskAlert status={results.grid.status} label={results.grid.label} compact />
                 )}
                 {teacherMode && <p className="mt-2 text-xs font-bold text-slate-600">미션 목표: {teacherTarget}점 · {results && results.sustainability_score >= teacherTarget ? '달성' : '아직 도전 중'}</p>}
                 <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-700">{grade.message}</p>
@@ -3121,31 +3312,58 @@ function BeginnerWizard({
               )}
               <div className="rounded-2xl bg-[#fff6d8] p-4"><p className="text-xs font-bold text-amber-800">쉽게 말하면</p><p className="mt-1 text-sm font-semibold leading-relaxed text-slate-700">{metaphor}</p><p className="mt-2 text-[10px] leading-snug text-slate-500">※ 공식적인 나무·자동차 환산값이 아니라, 이 시뮬레이션 안에서 상대적인 부담을 이해하기 위한 표현이에요.</p></div>
               {/*
-                "다음에 해볼 일"은 전체 추천 문구를 그대로 그리지 않는다.
-
-                추천의 단일 소스는 results.next_action 하나뿐이고, 전체 문구(reason) +
-                적용하기 버튼은 하단 "결과 해석 > 다음 단계" 카드에서만 보여준다.
-                여기서 같은 reason을 전부 그리면 같은 추천이 서로 다른 UI로 중복 노출된다.
-                그래서 여기서는 축 + 변화폭 한 줄 요약만 언급하고, 누르면 실제 액션이
-                있는 "다음 단계" 카드로 scrollIntoView하는 링크로 둔다.
+                상단 요약 CTA(개선 #3): 추천 적용 버튼을 스크롤 없이도 바로 누를 수 있게
+                상단 요약 카드에 직접 배치한다. 문구 단일 소스는 results.next_action 하나다.
               */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-bold text-slate-500">다음에 해볼 일</p>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-slate-500">다음 추천 한 걸음</p>
+                  {results?.next_action && (
+                    <span className="rounded bg-brand-50 border border-brand-200 px-2 py-0.5 text-[10px] font-bold text-brand-700">
+                      추천 행동
+                    </span>
+                  )}
+                </div>
                 {isCalculating ? (
                   <p className="mt-1 text-sm font-bold text-slate-800">새 조합을 살펴보는 중이에요...</p>
                 ) : results?.next_action ? (
-                  <p className="mt-1 text-sm font-bold leading-relaxed text-slate-800">
-                    {nextActionTeaser(results.next_action)} 해보면 어떨까요?{' '}
-                    <button
-                      type="button"
-                      onClick={onShowNextAction}
-                      title="아래 「결과 해석 · 다음 단계」 카드에 있는 추천 내용과 적용 버튼으로 이동합니다"
-                      className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                    >
-                      다음 단계 추천 확인하기
-                      <ArrowUp className="h-3.5 w-3.5 rotate-180" aria-hidden="true" />
-                    </button>
-                  </p>
+                  <div className="mt-2 space-y-2.5">
+                    <p className="text-sm font-bold leading-relaxed text-slate-800">
+                      {results.next_action.reason}
+                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                      <div>
+                        <span className="text-slate-500">예상 점수: </span>
+                        <span className="font-black text-slate-900 tabular-nums">{formatScore(results.next_action.expected_score)}점</span>
+                        <span className="font-bold text-green-700 tabular-nums ml-1">({formatSigned(results.next_action.expected_gain)}점)</span>
+                      </div>
+                      <span className="rounded bg-white px-2 py-0.5 text-xs font-bold text-slate-700 border border-slate-200">
+                        {results.next_action.lever_label} {formatDelta(results.next_action.delta)}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {onApplyNextAction && (
+                        <button
+                          type="button"
+                          onClick={() => onApplyNextAction(results.next_action!)}
+                          disabled={isCalculating}
+                          aria-label={`추천 적용하기 — ${results.next_action.lever_label} ${formatDelta(results.next_action.delta)} 반영 시 ${formatScore(results.next_action.expected_score)}점 예상`}
+                          className="flex-1 min-w-[200px] flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2.5 text-xs font-bold text-white shadow-md transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                        >
+                          이 추천을 시뮬레이션에 적용하기
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={onShowNextAction}
+                        title="아래 「결과 해석 · 다음 단계」 카드로 이동합니다"
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                      >
+                        상세 근거 보기
+                        <ArrowUp className="h-3.5 w-3.5 rotate-180" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <p className="mt-1 text-sm font-bold text-slate-800">슬라이더를 움직여 다른 결과도 비교해보세요.</p>
                 )}
@@ -3161,14 +3379,45 @@ function BeginnerWizard({
             <div className="relative rounded-2xl bg-[#e8f7ee] px-4 py-3 text-sm font-bold leading-relaxed text-slate-700">
               {step === 1
                 ? `${selectedRegion}을 골랐어요. 이제 에너지 조합을 만들어봐요!`
-                : gisangiEncouragement(mood)}
+                : step === 2
+                  ? '에너지 비율을 움직여보세요. 지구의 표정이 어떻게 바뀌는지 살펴봐요!'
+                  : gisangiEncouragement(mood, results?.grid?.status)}
               <span className="absolute bottom-3 -left-2 h-4 w-4 rotate-45 bg-[#e8f7ee]" aria-hidden="true" />
             </div>
           </div>
         </div>
       </div>
 
-      {step === 3 && <div className="border-t border-slate-100 bg-[#fbfaf4] p-5 sm:p-8"><EnergyQuizCard question={QUIZ_POOL[quizIndex]} onNext={advanceQuiz} onRetry={onQuizRetry} selectedIndex={quizAnswer} onAnswer={onQuizAnswer} /></div>}
+      {step === 3 && (
+        <div className="border-t border-slate-100 bg-[#fbfaf4] p-5 sm:p-8">
+          <Accordion
+            id="beginner-quiz-accordion"
+            group="beginner-extra"
+            defaultOpen={true}
+            className="rounded-2xl border border-slate-200 bg-white shadow-sm"
+            triggerClassName="p-4"
+            label={
+              <div className="flex flex-wrap items-center justify-between gap-2 w-full pr-3 text-left">
+                <div>
+                  <span className="text-sm font-bold text-slate-900">에너지 상식 퀴즈 (3단계 배움 활동)</span>
+                  <p className="text-xs text-slate-500 font-normal">결과를 더 깊이 이해하는 배경 상식 문제예요</p>
+                </div>
+                <span className="text-xs text-slate-500 font-medium">접기 / 펼치기</span>
+              </div>
+            }
+          >
+            <div className="p-3 pt-0">
+              <EnergyQuizCard
+                question={QUIZ_POOL[quizIndex]}
+                onNext={advanceQuiz}
+                onRetry={onQuizRetry}
+                selectedIndex={quizAnswer}
+                onAnswer={onQuizAnswer}
+              />
+            </div>
+          </Accordion>
+        </div>
+      )}
 
       {step === 3 && <div className="px-5 pb-4 sm:px-8"><LearningBadges unlocked={badges} /></div>}
 
@@ -3249,7 +3498,7 @@ function SimulationContextBar({
         <span className="hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
         <Gauge className="h-4 w-4 text-slate-500" aria-hidden="true" />
         <span>지속가능성 축</span>
-        <strong className="tabular-nums text-slate-900">{score == null ? '계산 중' : `${beginnerGrade(score).label} · 목표까지 ${score >= targetScore ? '도달' : `${formatScore(targetScore - score)}점`}`}</strong>
+        <strong className="tabular-nums text-slate-900">{score == null ? '계산 중' : `${beginnerGrade(score).label} · ${targetScore - score <= 0 ? '목표 달성' : `목표까지 ${formatScore(targetScore - score)}점`}`}</strong>
         <span className={`flex items-center gap-1.5 ${isCalculating ? 'text-brand-700' : 'text-slate-500'}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${isCalculating ? 'animate-pulse bg-brand-600' : 'bg-emerald-500'}`} aria-hidden="true" />
           {isCalculating ? '계산 중' : '최신 결과'}
@@ -3297,11 +3546,31 @@ function RegionComparisonCard({
           const winner = metric.winner === 'higher' ? Math.max(...numeric) : Math.min(...numeric);
           return (
             <div key={metric.label} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 py-2 text-xs">
-              {metric.values.map((value, index) => (
-                <div key={`${metric.label}-${index}`} className={`min-w-0 ${numeric[index] === winner && metric.winner !== 'none' ? 'font-bold text-brand-700' : 'text-slate-700'}`}>
-                  <span className="mr-1 text-[10px] text-slate-400 sm:hidden">{metric.label}</span>{value}
-                </div>
-              ))}
+              {metric.values.map((value, index) => {
+                const isGrid = metric.label === '전력망';
+                const gridStatus = isGrid ? rows[index]?.grid?.status : null;
+                return (
+                  <div key={`${metric.label}-${index}`} className={`min-w-0 ${numeric[index] === winner && metric.winner !== 'none' ? 'font-bold text-brand-700' : 'text-slate-700'}`}>
+                    <span className="mr-1 text-[10px] text-slate-400 sm:hidden">{metric.label}</span>
+                    {isGrid && gridStatus ? (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                          gridStatus === 'stable'
+                            ? 'border-green-200 bg-green-50 text-green-800'
+                            : gridStatus === 'deficit'
+                              ? 'border-red-300 bg-red-50 text-red-900 shadow-xs'
+                              : 'border-amber-300 bg-amber-50 text-amber-900 shadow-xs'
+                        }`}
+                      >
+                        {gridStatus !== 'stable' && <ShieldAlert className="h-3 w-3 shrink-0" aria-hidden="true" />}
+                        {value}
+                      </span>
+                    ) : (
+                      value
+                    )}
+                  </div>
+                );
+              })}
               <span className="col-span-2 -mt-1 text-[10px] text-slate-500 sm:col-span-2">{metric.label}</span>
             </div>
           );
@@ -4443,6 +4712,7 @@ export default function Home() {
         }}
         hasSavedSession={hasSavedSession}
         onResetSession={resetBeginnerSession}
+        onApplyNextAction={handleApplyNextAction}
         teacherMode={teacherMode}
         teacherTarget={teacherTarget}
         badges={badges}
@@ -4463,6 +4733,31 @@ export default function Home() {
 
       {showDetails && wizardStep === 3 && (
         <div className="w-full max-w-[1600px] scroll-mt-4">
+          {/*
+            핵심 요약 고정(개선 #3): 점수·리스크·다음 단계 CTA를 상단 sticky 바에 압축한다.
+            파스텔 톤 유지(흰 바탕+얇은 그림자) + 리스크가 있을 때만 경고 테두리.
+            부가 섹션(아래 파이프라인·탄소·퀴즈)은 접어두고 핵심만 항상 보이게 한다.
+          */}
+          {results && (
+            <div className={`sticky top-2 z-20 mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-white/95 px-3 py-2 shadow-card backdrop-blur ${results.grid.status !== 'stable' ? (results.grid.status === 'deficit' ? 'border border-red-200' : 'border border-amber-200') : 'border border-slate-100'}`}>
+              <ScoreRiskBadge score={results.sustainability_score} gridStatus={results.grid.status} />
+              {results.next_action && (
+                <>
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-600">
+                    다음 한 걸음 · {nextActionTeaser(results.next_action)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyNextAction(results.next_action!)}
+                    disabled={isCalculating}
+                    className="shrink-0 rounded-md bg-brand-600 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                  >
+                    추천 적용하기
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SimulationContextBar
               region={selectedRegion}
@@ -4551,6 +4846,18 @@ export default function Home() {
               지역 → 기후·적합도 → 탄소 배출. 에너지 믹스는 아래 요약 카드에서 조정합니다
             </p>
           </div>
+          {/*
+            정보 위계(개선 #3): 파이프라인은 부가 섹션이므로 아코디언으로 접어둔다.
+            핵심 요약(상단 sticky 바 + 아래 결과 해석)은 항상 보이고,
+            지역·기후·탄소 상세가 필요한 사용자만 펼쳐본다.
+          */}
+          <Accordion
+            id="section-pipeline-body"
+            group="detail-extra"
+            className="bg-white rounded-lg shadow-card"
+            triggerClassName="p-3"
+            label={<span className="text-sm font-semibold text-slate-900">파이프라인 상세 펼치기 — 지역·기후·적합도·탄소 배출</span>}
+          >
 
           {/*
             ①·② — xl(1280px) 이상에서만 나란히 세운다.
@@ -4629,7 +4936,12 @@ export default function Home() {
                 숨 쉬는 간격으로 재배치된다 — 카드가 잘린 것처럼 보이지 않는다.
               */}
               <div className="h-full flex flex-col bg-white p-3 rounded-lg shadow-card">
-                <h2 className="text-base font-semibold text-slate-900 mb-2.5">지역별 에너지 적합도</h2>
+                <h2 className="text-base font-semibold text-slate-900 mb-2.5">
+                  지역별 에너지 적합도
+                  <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-bold text-slate-500">
+                    지역 설비 기준 · 상대 지수(무차원)
+                  </span>
+                </h2>
 
                 <WeatherTabs
                   selectedWeather={selectedWeather}
@@ -4725,6 +5037,7 @@ export default function Home() {
             isCalculating={isCalculating}
           />
           </div>
+          </Accordion>
         </section>
 
         {/*
@@ -4778,6 +5091,8 @@ export default function Home() {
               onSliderChange={handleSliderChange}
               results={results}
               isCalculating={isCalculating}
+              nextAction={results?.next_action}
+              onApply={handleApplyNextAction}
             />
 
             {/* Next Action */}

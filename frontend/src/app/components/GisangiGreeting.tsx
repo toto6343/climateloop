@@ -45,7 +45,7 @@ export default function GisangiGreeting() {
       */}
       <div className="relative max-w-[15rem] rounded-lg border border-slate-200 bg-white px-3 py-2">
         <p className="text-xs leading-relaxed text-slate-600">
-          안녕하세요, 저는 기상이예요! 오늘도 함께해줘서 고마워요
+          안녕하세요, 저는 기상이예요! 지구를 위한 에너지 조합, 저와 함께 한 걸음씩 완성해 가요.
         </p>
         <span
           aria-hidden="true"
