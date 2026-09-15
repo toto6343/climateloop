@@ -392,3 +392,116 @@ input[type='number'] {
   background: currentColor;
   flex-shrink: 0;
 }
+
+/*
+ * ClimateLoop 디자인 토큰
+ * ------------------------------------------------------------------
+ * 이 파일은 globals.css 맨 위(@import "tailwindcss" 바로 다음)에
+ * 병합해서 쓴다. 다른 화면에서도 이 파일 하나만 가져오면 같은 토큰을
+ * 쓸 수 있도록, 프로젝트 고유 로직(.climate-scene, .beginner-range 등)은
+ * 이 파일에 넣지 않는다 — 여기 있는 것은 전부 재사용 가능한 원자값이다.
+ */
+
+@theme {
+  /* ---------------------------------------------------------------
+   * 1. 시맨틱 컬러 — 상태 전용. 값(데이터)을 나타내지 않는다.
+   * --------------------------------------------------------------- */
+
+  /* info: 중립적 안내, 참고 정보, 진행 중 상태 */
+  --color-info-bg: #eff6ff;
+  --color-info-border: #bfdbfe;
+  --color-info-text: #1e40af;
+  --color-info-solid: #1d4ed8;
+  --color-info-icon: #2563eb;
+
+  /* warning: 주의가 필요하지만 즉각적 위험은 아닌 상태 */
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-warning-text: #78350f;
+  --color-warning-solid: #b45309;
+  --color-warning-icon: #d97706;
+
+  /* danger: 위험, 실패, 즉각 조치가 필요한 상태 */
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
+  --color-danger-text: #991b1b;
+  --color-danger-solid: #b91c1c;
+  --color-danger-icon: #dc2626;
+
+  /* success: 목표 달성, 양호, 안정 상태 */
+  --color-success-bg: #f0fdf4;
+  --color-success-border: #bbf7d0;
+  --color-success-text: #166534;
+  --color-success-solid: #15803d;
+  --color-success-icon: #16a34a;
+
+  /* ---------------------------------------------------------------
+   * 2. Primary / 브랜드 컬러
+   * --------------------------------------------------------------- */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-600: #4338ca;
+  --color-primary-700: #3730a3;
+  --color-primary-800: #312e81;
+
+  /* ---------------------------------------------------------------
+   * 3. 타이포그래피 스케일
+   * --------------------------------------------------------------- */
+  --text-heading-size: 2rem;
+  --text-heading-weight: 700;
+  --text-heading-leading: 1.25;
+  --text-heading-tracking: -0.01em;
+
+  --text-subheading-size: 1.125rem;
+  --text-subheading-weight: 600;
+  --text-subheading-leading: 1.35;
+
+  --text-body-size: 0.875rem;
+  --text-body-weight: 400;
+  --text-body-leading: 1.55;
+
+  --text-caption-size: 0.75rem;
+  --text-caption-weight: 400;
+  --text-caption-leading: 1.4;
+
+  /* ---------------------------------------------------------------
+   * 4. 스페이싱 스케일 — 8px 기준 4단계.
+   * --------------------------------------------------------------- */
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+
+  /* ---------------------------------------------------------------
+   * 5. 레이아웃 기준선
+   * --------------------------------------------------------------- */
+  --layout-max-width: 1200px;
+  --layout-gutter: var(--space-2);
+}
+
+/*
+ * 타이포그래피 유틸리티 클래스.
+ */
+.text-heading {
+  font-size: var(--text-heading-size);
+  font-weight: var(--text-heading-weight);
+  line-height: var(--text-heading-leading);
+  letter-spacing: var(--text-heading-tracking);
+}
+
+.text-subheading {
+  font-size: var(--text-subheading-size);
+  font-weight: var(--text-subheading-weight);
+  line-height: var(--text-subheading-leading);
+}
+
+.text-body {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-leading);
+}
+
+.text-caption {
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-leading);
+}

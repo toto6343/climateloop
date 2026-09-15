@@ -8,6 +8,11 @@ import MapWrapper from './components/MapWrapper';
 import { BestSourceHint, RegionStat, sourceColor } from './components/energySources';
 import { REGION_NAMES } from './components/regions';
 import { RegionSourceMix } from './components/RegionSourceMix';
+import { Badge, AlertBanner } from './components/Badge';
+import { Button } from './components/Button';
+import { StepIndicator } from './components/StepIndicator';
+import { StackedMixBar } from './components/StackedMixBar';
+import { GRID_STATUS_TONE, SemanticTone } from './components/tokens';
 
 /*
   시뮬레이션 결과의 타입과 표시용 상수는 components/simulationTypes.ts 로 옮겼다.
@@ -182,18 +187,10 @@ function GoalProgress({ goal }: { goal?: Goal | null }) {
 function LevelStepper({ level }: { level?: LevelState | null }) {
   const total = level?.total_levels ?? 4;
   const currentId = level?.current.id ?? 0;
-  const steps = Array.from({ length: total }, (_, i) => i + 1);
+  const stepLabels = Array.from({ length: total }, (_, i) => `${i + 1}단계`);
 
   return (
     <div>
-      {/*
-        좁은 화면(320px) 방어: 헤더 두 조각이 맞붙지 않게 gap을 두고, 오른쪽 현재
-        단계는 줄바꿈 시에도 오른쪽 정렬을 유지한다. 한글은 음절 중간에서 끊길 수
-        있어(예: '저탄소' / '진입') keep-all로 단어 단위 줄바꿈만 허용한다.
-        참고로 겹침·벗어남 자체는 구조상 없다 — 헤더와 안내는 진행바를 사이에 둔
-        일반 블록 흐름이라 겹칠 수 없고, 320px에서도 헤더 합(약 200px)이 카드
-        내용폭(약 272px) 안에 들어간다. 아래는 줄바꿈이 일어나는 경우의 모양 대비용이다.
-      */}
       <div className="flex justify-between items-center gap-2 mb-2">
         <span className="text-sm font-medium text-slate-600 shrink-0">학습 단계</span>
         <span className="text-sm font-bold text-slate-900 text-right break-keep">
@@ -201,21 +198,8 @@ function LevelStepper({ level }: { level?: LevelState | null }) {
         </span>
       </div>
 
-      <div className="flex items-center gap-1">
-        {steps.map((step) => (
-          <React.Fragment key={step}>
-            <div className={`w-2.5 h-2.5 rounded-full shrink-0 transition-colors duration-500 ${step <= currentId ? 'bg-brand-600' : 'bg-slate-200'}`} />
-            {step < total && (
-              <div className={`flex-grow h-0.5 transition-colors duration-500 ${step < currentId ? 'bg-brand-600' : 'bg-slate-200'}`} />
-            )}
-          </React.Fragment>
-        ))}
-      </div>
+      <StepIndicator steps={stepLabels} currentIndex={currentId - 1} />
 
-      {/*
-        안내 줄바꿈: 긴 이름도 단어 중간에서 끊기지 않게 keep-all. leading을
-        붙여 두 줄이 되면 줄 사이가 붙지 않게 한다.
-      */}
       <p className="text-xs text-slate-600 mt-1.5 leading-relaxed break-keep">
         {!level
           ? '계산 중...'
@@ -318,17 +302,7 @@ function Spinner({ className = '' }: { className?: string }) {
 
 /** 계산 중임을 알리는 배지. 기존 결과를 지우지 않고 갱신 중임만 알린다. */
 function UpdatingBadge() {
-  return (
-    /*
-      알약(바탕+테두리+rounded-full)이었다. 이 배지는 "지금 계산 중"이라는 한때의
-      상태를 알리는 것뿐인데, 상시로 떠 있는 "현재"·"목표 달성" 배지와 같은 모양이라
-      같은 무게로 읽혔다. 글자와 스피너만 남긴다.
-    */
-    <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 shrink-0">
-      <Spinner className="w-3 h-3" />
-      업데이트 중
-    </span>
-  );
+  return <Badge tone="info" label="업데이트 중" size="sm" />;
 }
 
 /**
@@ -342,19 +316,8 @@ function UpdatingBadge() {
 function AiSourceBadge({ source }: { source: AiSource }) {
   const isLlm = source === 'llm';
   return (
-    <span
-      title={isLlm
-        ? 'LLM이 생성한 해설입니다.'
-        : '계산 결과로 만든 요약입니다. AI 호출 없이 즉시 생성됩니다.'}
-      /*
-        LLM 이든 폴백이든 같은 무채색 글자로 둔다. 알약 바탕을 걷어낸 이유는 위
-        UpdatingBadge 와 같다 — 이 배지는 출처를 밝히는 각주에 가깝고, 상태 배지와
-        같은 모양을 쓸 만큼 강조할 것이 아니다. 구분은 아이콘과 글자가 진다.
-      */
-      className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 shrink-0"
-    >
-      {isLlm ? <Sparkles className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
-      {isLlm ? 'AI 생성' : '즉시 요약'}
+    <span title={isLlm ? 'LLM이 생성한 해설입니다.' : '계산 결과로 만든 요약입니다. AI 호출 없이 즉시 생성됩니다.'}>
+      <Badge tone="info" label={isLlm ? 'AI 생성' : '즉시 요약'} size="sm" />
     </span>
   );
 }
@@ -384,13 +347,10 @@ const GOAL_ACHIEVED_CLASSES = 'bg-green-50 border-green-200 text-green-800';
  * 붙이면 헷갈린다. 그때는 뱃지를 생략하거나 아래 유지 문구로 바꾼다.
  */
 function GoalBadge({ size = 'sm', title, className = '', context = 'result' }: { size?: 'xs' | 'sm'; title?: string; className?: string; context?: 'result' | 'mission' | 'kept' }) {
+  const label = context === 'mission' ? '미션 달성' : context === 'kept' ? '적용 시에도 목표 유지' : '이번 결과 목표 달성';
   return (
-    <span
-      title={title}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold shrink-0 ${GOAL_ACHIEVED_CLASSES} ${size === 'xs' ? 'text-[10px]' : 'text-xs'} ${className}`}
-    >
-      <Check className={size === 'xs' ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5'} aria-hidden="true" />
-      {context === 'mission' ? '미션 달성' : context === 'kept' ? '적용 시에도 목표 유지' : '이번 결과 목표 달성'}
+    <span title={title}>
+      <Badge tone="success" label={label} size={size === 'xs' ? 'sm' : 'md'} className={className} />
     </span>
   );
 }
@@ -1954,18 +1914,18 @@ const GRID_STATUS_STYLES: Record<GridStatus, { dot: string; text: string }> = {
 function ScoreRiskBadge({ score, gridStatus }: { score?: number | null; gridStatus?: GridStatus | null }) {
   const grade = beginnerGrade(score);
   const riskHint = gridStatus != null && gridStatus !== 'stable' ? ' · 전력망 경고 확인' : '';
-  const label = score == null
-    ? '--점 · 계산 중'
-    : `${formatScore(score)}점 · ${grade.label}`;
+  const label = score == null ? '--점 · 계산 중' : `${formatScore(score)}점 · ${grade.label}${riskHint}`;
 
-  return (
-    <span
-      aria-label={`${label}${riskHint}`}
-      className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold leading-snug text-slate-700"
-    >
-      <span className="tabular-nums">{label}</span>
-    </span>
-  );
+  // 전력망에 위험이 있으면 그 심각도가 점수보다 먼저 읽혀야 하므로 톤도 그쪽을 따른다.
+  // 전력망이 안정이면 점수 자체의 등급(양호/보통/도전)을 톤으로 쓴다.
+  const tone: SemanticTone =
+    gridStatus != null && gridStatus !== 'stable'
+      ? GRID_STATUS_TONE[gridStatus]
+      : score == null
+        ? 'info'
+        : score >= 71 ? 'success' : score >= 41 ? 'warning' : 'danger';
+
+  return <Badge tone={tone} label={label} size="sm" />;
 }
 
 /**
@@ -1975,30 +1935,14 @@ function ScoreRiskBadge({ score, gridStatus }: { score?: number | null; gridStat
  * 묻힌다. 배지+아이콘+주황/빨강 계열로 시각적 우선순위를 높이고, 스크린리더에도
  * role="alert"로 알린다. 점수 카드 바로 아래에 두어 첫 화면에서 보이게 한다.
  */
-function GridRiskAlert({ status, label, compact = false }: { status: GridStatus; label: string; compact?: boolean }) {
+function GridRiskAlert({ status, label }: { status: GridStatus; label: string; compact?: boolean }) {
   if (status === 'stable') return null;
   return (
-    <p
-      role="alert"
-      className={`flex items-start gap-1.5 rounded-md border font-bold leading-snug ${
-        compact ? 'mt-2 px-2 py-1.5 text-[11px]' : 'mt-2 px-2.5 py-2 text-xs'
-      } ${
-        status === 'deficit'
-          ? 'border-red-300 bg-red-50 text-red-900 shadow-xs'
-          : 'border-amber-300 bg-amber-50 text-amber-900 shadow-xs'
-      }`}
-    >
-      <ShieldAlert className="mt-px h-4 w-4 shrink-0" aria-hidden="true" />
-      <span>
-        <span className="font-black text-slate-900">전력망 안정도: </span>
-        <span className={status === 'deficit' ? 'text-red-950 font-black underline decoration-red-400 underline-offset-2' : 'text-amber-950 font-black underline decoration-amber-400 underline-offset-2'}>
-          {label}
-        </span>
-        <span className="mt-0.5 block text-[11px] font-medium opacity-90">
-          종합 점수와 별개로 먼저 확인하세요 — 상단 결과 카드의 추천이 이 리스크를 푸는 한 걸음입니다
-        </span>
-      </span>
-    </p>
+    <AlertBanner
+      tone={GRID_STATUS_TONE[status]}
+      title={`전력망 안정도: ${label}`}
+      description="종합 점수와 별개로 먼저 확인하세요 — 상단 결과 카드의 추천이 이 리스크를 푸는 한 걸음입니다"
+    />
   );
 }
 
@@ -2598,36 +2542,14 @@ function SimulationSummaryCard({
           <p className="text-[11px] text-slate-600">슬라이더나 숫자를 바꾸면 위 배출·적합도와 아래 점수가 함께 갱신됩니다</p>
         </div>
 
-        <div className="space-y-2">
-          {(['renewable', 'nuclear', 'fossil'] as const).map((type) => (
-            <div key={type}>
-              <div className="flex justify-between items-center text-sm">
-                {/* 축마다 고정된 색 점. 세 줄을 글자 없이도 구분하게 한다. */}
-                <span className="flex items-center gap-2 text-slate-700 font-medium">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: MIX_COLORS[type] }}
-                  />
-                  {MIX_LABELS[type]}
-                </span>
-                <MixNumberInput type={type} value={mix[type]} onSliderChange={onSliderChange} />
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="0.1"
-                aria-label={`${MIX_LABELS[type]} 비중(%)`}
-                value={mix[type]}
-                onChange={(e) => onSliderChange(type, e.target.value)}
-                className="mt-1 w-full h-2 rounded-lg appearance-none cursor-pointer accent-brand-600"
-                style={{
-                  background: `linear-gradient(90deg, ${MIX_COLORS[type]} 0 ${mix[type]}%, #e2e8f0 ${mix[type]}% 100%)`,
-                }}
-              />
-            </div>
-          ))}
-        </div>
+        <StackedMixBar
+          segments={[
+            { key: 'renewable', label: MIX_LABELS.renewable, color: MIX_COLORS.renewable, value: mix.renewable },
+            { key: 'nuclear', label: MIX_LABELS.nuclear, color: MIX_COLORS.nuclear, value: mix.nuclear },
+            { key: 'fossil', label: MIX_LABELS.fossil, color: MIX_COLORS.fossil, value: mix.fossil },
+          ]}
+          onChange={onSliderChange}
+        />
 
         {/*
           합계를 맞추라고 요구하지 않는다. 한 축을 움직이면 나머지 두 축이 비율대로
@@ -2749,17 +2671,17 @@ function SaveReportButton({
   const label = isGeneratingPdf ? 'PDF 생성 중...' : '결과 리포트 저장';
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="secondary"
+      size="sm"
       onClick={onDownloadPdf}
       disabled={isGeneratingPdf}
+      loading={isGeneratingPdf}
       aria-label={label}
-      className="flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-brand-600 px-2.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-400 sm:px-3.5 sm:py-2 sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+      icon={!isGeneratingPdf ? <Download className="w-4 h-4" /> : undefined}
     >
-      {isGeneratingPdf ? <Spinner className="w-4 h-4" /> : <Download className="w-4 h-4" />}
-      {/* 좁은 화면에서는 아이콘만. aria-label 이 이름을 대신 들고 있다. */}
       <span className="hidden sm:inline">{label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -3085,17 +3007,12 @@ function BeginnerWizard({
             <span className="hidden rounded-full bg-white/75 px-3 py-1.5 text-xs font-bold text-slate-600 sm:block">3분 체험</span>
           )}
         </div>
-        <div className="mt-6 grid grid-cols-3 gap-2" aria-label="학습 단계">
-          {['지역 고르기', '에너지 바꾸기', '결과와 퀴즈'].map((label, index) => {
-            const number = index + 1;
-            return (
-              <button key={label} type="button" onClick={() => number <= step && setStep(number)} className="text-left" aria-current={step === number ? 'step' : undefined}>
-                <div className={`mb-2 h-2 rounded-full ${number <= step ? 'bg-emerald-500' : 'bg-white/70'}`} />
-                <span className={`text-xs font-bold ${number === step ? 'text-emerald-800' : 'text-slate-500'}`}>{number}. {label}</span>
-              </button>
-            );
-          })}
-        </div>
+        <StepIndicator
+          steps={['지역 고르기', '에너지 바꾸기', '결과와 퀴즈']}
+          currentIndex={step - 1}
+          onStepChange={(i) => setStep(i + 1)}
+          className="mt-6"
+        />
         {/*
           전체 초기화 — 저장된 세션으로 복귀한 사용자에게만 보인다.
           resetBeginnerSession 하나만 이 일을 한다: 단계→1, 지역→서울, 날씨→맑음,
@@ -3158,9 +3075,14 @@ function BeginnerWizard({
                 <p className="mt-2 text-sm text-slate-600">한 가지를 올리면 나머지는 자동으로 맞춰져요.</p>
               </div>
               <div className="space-y-3">
-                <BeginnerMixSlider label="햇빛·바람 에너지" value={mix.renewable} color="#35b779" onChange={(value) => onSliderChange('renewable', value)} />
-                <BeginnerMixSlider label="원자력 에너지" value={mix.nuclear} color="#7c83fd" onChange={(value) => onSliderChange('nuclear', value)} />
-                <BeginnerMixSlider label="화석연료" value={mix.fossil} color="#f29c7c" onChange={(value) => onSliderChange('fossil', value)} />
+                <StackedMixBar
+                  segments={[
+                    { key: 'renewable', label: '햇빛·바람 에너지', color: '#35b779', value: mix.renewable },
+                    { key: 'nuclear', label: '원자력 에너지', color: '#7c83fd', value: mix.nuclear },
+                    { key: 'fossil', label: '화석연료', color: '#f29c7c', value: mix.fossil },
+                  ]}
+                  onChange={onSliderChange}
+                />
               </div>
             </div>
           )}
@@ -3251,17 +3173,17 @@ function BeginnerWizard({
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 pt-1">
-                      {onApplyNextAction && (
-                        <button
-                          type="button"
+                        {onApplyNextAction && (
+                        <Button
+                          variant="primary"
                           onClick={() => onApplyNextAction(results.next_action!)}
                           disabled={isCalculating}
                           aria-label={`추천 적용하기 — ${results.next_action.lever_label} ${formatDelta(results.next_action.delta)} 반영 시 ${formatScore(results.next_action.expected_score)}점 예상`}
-                          className="flex-1 min-w-[200px] flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2.5 text-xs font-bold text-white shadow-md transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                          className="flex-1 min-w-[200px]"
                         >
                           이 추천을 시뮬레이션에 적용하기
-                        </button>
-                      )}
+                        </Button>
+                      )};
                       <button
                         type="button"
                         onClick={onShowNextAction}
@@ -3364,16 +3286,15 @@ function BeginnerWizard({
             </button>
           )}
           {step < 3 && <button type="button" onClick={() => setStep(step + 1)} className="min-h-11 rounded-xl bg-emerald-500 px-6 text-sm font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-600">다음으로</button>}
-          {step === 3 && (
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              title="지금 고른 지역·에너지는 그대로 두고 1단계 화면으로 돌아갑니다"
-              aria-label="1단계부터 다시 보기 (지역, 에너지 선택 유지)"
-              className="min-h-11 rounded-xl bg-emerald-500 px-6 text-sm font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-600"
+          {step > 1 && (
+            <Button
+              variant="tertiary"
+              onClick={() => setStep(step - 1)}
+              title="선택값은 유지하고 이전 단계로 돌아갑니다"
+              aria-label="이전 단계로 (지역, 날씨, 에너지 선택 유지)"
             >
-              1단계부터
-            </button>
+              이전 단계
+            </Button>
           )}
         </div>
       </div>
@@ -4659,14 +4580,15 @@ export default function Home() {
                   <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-600">
                     다음 한 걸음 · {nextActionTeaser(results.next_action)}
                   </span>
-                  <button
-                    type="button"
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={() => handleApplyNextAction(results.next_action!)}
                     disabled={isCalculating}
-                    className="shrink-0 rounded-md bg-brand-600 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                    className="shrink-0"
                   >
                     추천 적용하기
-                  </button>
+                  </Button>
                 </>
               )}
             </div>

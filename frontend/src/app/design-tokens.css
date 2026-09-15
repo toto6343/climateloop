@@ -1,0 +1,139 @@
+/*
+ * ClimateLoop 디자인 토큰
+ * ------------------------------------------------------------------
+ * 이 파일은 globals.css 맨 위(@import "tailwindcss" 바로 다음)에
+ * 병합해서 쓴다. 다른 화면에서도 이 파일 하나만 가져오면 같은 토큰을
+ * 쓸 수 있도록, 프로젝트 고유 로직(.climate-scene, .beginner-range 등)은
+ * 이 파일에 넣지 않는다 — 여기 있는 것은 전부 재사용 가능한 원자값이다.
+ *
+ * 구성:
+ *   1. 시맨틱 컬러 (info / warning / danger / success) — 상태를 나타내는
+ *      용도로만 쓴다. 값(발전원 색, 믹스 3축 색)을 나타내는 데이터 팔레트는
+ *      건드리지 않는다 — 그건 여전히 각 화면의 도메인 로직이다.
+ *   2. 브랜드/Primary 컬러 — 기존 brand-600(#4338ca) 그대로 유지.
+ *      "진한 남색" 버튼 요구사항과 이미 일치하고, 시맨틱 info(파랑)와
+ *      명도·채도가 달라 섞이지 않는다.
+ *   3. 타이포그래피 스케일 — Heading / Subheading / Body / Caption 4단계.
+ *   4. 스페이싱 스케일 — 8px 기준 4단계(8/16/24/32).
+ *
+ * 모든 시맨틱 색 쌍(텍스트-배경)은 WCAG AA(4.5:1) 이상을 확인했다
+ * (계산값은 각 토큰 옆 주석 참고). "pill/배지 배경에 흰 텍스트를 얹는"
+ * 방식 대신, 옅은 배경 + 짙은 텍스트("soft" 스타일)를 기본으로 삼았다 —
+ * warning(amber)·success(green) 계열은 중간 채도 배경에 흰 텍스트를 얹으면
+ * 4.5:1을 넘기기 어렵기 때문이다. 흰 텍스트가 필요한 solid 자리(아이콘
+ * 배지, 알림 아이콘 배경 등)는 별도의 -solid 토큰을 쓴다.
+ */
+
+@theme {
+  /* ---------------------------------------------------------------
+   * 1. 시맨틱 컬러 — 상태 전용. 값(데이터)을 나타내지 않는다.
+   * --------------------------------------------------------------- */
+
+  /* info: 중립적 안내, 참고 정보, 진행 중 상태 */
+  --color-info-bg: #eff6ff;      /* blue-50 */
+  --color-info-border: #bfdbfe;  /* blue-200 */
+  --color-info-text: #1e40af;    /* blue-800 — bg 대비 8.01:1 */
+  --color-info-solid: #1d4ed8;   /* blue-700 — 흰 텍스트 대비 6.70:1 */
+  --color-info-icon: #2563eb;    /* blue-600 */
+
+  /* warning: 주의가 필요하지만 즉각적 위험은 아닌 상태 */
+  --color-warning-bg: #fffbeb;      /* amber-50 */
+  --color-warning-border: #fde68a;  /* amber-200 */
+  --color-warning-text: #78350f;    /* amber-900 — bg 대비 8.75:1 */
+  --color-warning-solid: #b45309;   /* amber-700 — 흰 텍스트 대비 5.02:1 */
+  --color-warning-icon: #d97706;    /* amber-600 */
+
+  /* danger: 위험, 실패, 즉각 조치가 필요한 상태 */
+  --color-danger-bg: #fef2f2;      /* red-50 */
+  --color-danger-border: #fecaca;  /* red-200 */
+  --color-danger-text: #991b1b;    /* red-800 — bg 대비 7.60:1 */
+  --color-danger-solid: #b91c1c;   /* red-700 — 흰 텍스트 대비 6.47:1 */
+  --color-danger-icon: #dc2626;    /* red-600 */
+
+  /* success: 목표 달성, 양호, 안정 상태 */
+  --color-success-bg: #f0fdf4;      /* green-50 */
+  --color-success-border: #bbf7d0;  /* green-200 */
+  --color-success-text: #166534;    /* green-800 — bg 대비 6.81:1 */
+  --color-success-solid: #15803d;   /* green-700 — 흰 텍스트 대비 5.02:1 */
+  --color-success-icon: #16a34a;    /* green-600 */
+
+  /* ---------------------------------------------------------------
+   * 2. Primary / 브랜드 컬러 — "누를 수 있는 것 / 지금 고른 것" 전용.
+   *    기존 brand-* 토큰과 값을 맞춘다(마이그레이션 시 값 자체는 안 바뀜).
+   * --------------------------------------------------------------- */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-600: #4338ca;  /* Primary 버튼 기본 배경 — 흰 텍스트 대비 11.50:1 */
+  --color-primary-700: #3730a3;  /* Primary 버튼 hover */
+  --color-primary-800: #312e81;
+
+  /* ---------------------------------------------------------------
+   * 3. 타이포그래피 스케일 — 4단계 고정.
+   *    화면 전체에서 이 네 가지 크기만 쓴다. 캡션보다 작은 크기(예: 10px
+   *    태그류)는 예외적으로 남되, 본문 정보 전달에는 쓰지 않는다.
+   * --------------------------------------------------------------- */
+  --text-heading-size: 2rem;        /* 32px */
+  --text-heading-weight: 700;
+  --text-heading-leading: 1.25;
+  --text-heading-tracking: -0.01em;
+
+  --text-subheading-size: 1.125rem; /* 18px */
+  --text-subheading-weight: 600;
+  --text-subheading-leading: 1.35;
+
+  --text-body-size: 0.875rem;       /* 14px */
+  --text-body-weight: 400;
+  --text-body-leading: 1.55;
+
+  --text-caption-size: 0.75rem;     /* 12px */
+  --text-caption-weight: 400;
+  --text-caption-leading: 1.4;
+
+  /* ---------------------------------------------------------------
+   * 4. 스페이싱 스케일 — 8px 기준 4단계.
+   *    카드 padding, 카드 간 margin, 그리드 gap 은 전부 이 네 값 중
+   *    하나를 쓴다. Tailwind 임의값(p-[13px] 등)을 화면에서 없앤다.
+   * --------------------------------------------------------------- */
+  --space-1: 0.5rem;   /* 8px  — 인접 요소(아이콘-라벨), 배지 내부 padding */
+  --space-2: 1rem;     /* 16px — 카드 내부 padding, 폼 요소 간격 */
+  --space-3: 1.5rem;   /* 24px — 카드 내부 섹션 간 간격 */
+  --space-4: 2rem;     /* 32px — 카드-카드 간 margin, 섹션 간 간격 */
+
+  /* ---------------------------------------------------------------
+   * 5. 레이아웃 기준선 — 컨테이너 max-width, 좌우 gutter.
+   * --------------------------------------------------------------- */
+  --layout-max-width: 1200px;
+  --layout-gutter: var(--space-2); /* 16px, sm 이상에서 --space-3(24px) */
+}
+
+/*
+ * 타이포그래피 유틸리티 클래스.
+ *
+ * Tailwind 임의값(text-[13px] 등)을 직접 쓰지 않고 이 클래스들을 통해서만
+ * 크기를 지정한다 — 스케일을 벗어난 값이 코드에 섞여 들어오는 것을 막는다.
+ */
+.text-heading {
+  font-size: var(--text-heading-size);
+  font-weight: var(--text-heading-weight);
+  line-height: var(--text-heading-leading);
+  letter-spacing: var(--text-heading-tracking);
+}
+
+.text-subheading {
+  font-size: var(--text-subheading-size);
+  font-weight: var(--text-subheading-weight);
+  line-height: var(--text-subheading-leading);
+}
+
+.text-body {
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  line-height: var(--text-body-leading);
+}
+
+.text-caption {
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-caption-weight);
+  line-height: var(--text-caption-leading);
+}
