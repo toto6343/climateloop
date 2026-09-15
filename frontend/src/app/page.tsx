@@ -1876,15 +1876,10 @@ function NextActionCard({
   currentScore?: number;
   isCalculating: boolean;
   appliedTarget: number | null;
-  onApply: (action: NextAction) => void;
-  /** 감점 요인 세 줄. "왜 이 점수인가요?" 카드와 같은 백엔드 값을 그대로 그린다. */
-  factors?: Factor[] | null;
 }) {
   // 적용으로 시작된 계산인지 구분한다. 슬라이더 조작 중에도 버튼은 잠그되,
   // "적용 중" 문구는 실제로 적용을 눌렀을 때만 보여준다.
-  const isApplying = isCalculating && appliedTarget !== null;
   const showApplied = !isCalculating && appliedTarget !== null;
-  const currentAchieved = currentScore != null && currentScore >= 70;
 
   return (
     /*
@@ -1921,102 +1916,17 @@ function NextActionCard({
       )}
 
       {nextAction && (
-        <div className={`transition-opacity duration-200 ${isCalculating ? 'opacity-50' : 'opacity-100'}`}>
-          <div className="flex items-baseline justify-between gap-2 mb-2">
-            <span className="text-lg font-bold text-slate-900">
-              {nextAction.lever_label} {formatDelta(nextAction.delta)}
-            </span>
-            {/*
-              그린 계열을 쓴다. 이 배지는 "이 제안을 적용하면 목표 점수에 닿는다"는
-              긍정 판정이고, 이 화면에서 긍정 지표는 초록이다(요인 신호등의 good,
-              점수 증가분 +N점, 재생에너지). 브랜드 인디고였을 때는 바로 아래
-              "적용하기" 버튼과 같은 색이어서, 값을 말하는 배지와 누르는 버튼이 한
-              색으로 묶여 보였다 — 브랜드 색은 조작을 가리키고 값을 가리키지 않는다는
-              규칙(globals.css)에도 어긋났다.
-
-              토큰은 새로 만들지 않고 EnergyQuizCard 의 정답 표시가 쓰는 조합
-              (bg-green-50 / border-green-200 / text-green-800)을 그대로 가져왔다.
-              같은 뜻("맞았다 / 닿았다")에 같은 색이면 화면 전체에서 한 번만 배우면 된다.
-
-              대비: green-800(#166534) on green-50(#f0fdf4) = 6.81:1. 이 글자는 10px
-              굵은체라 WCAG 의 "큰 글자" 예외(18.66px 이상 굵은체)에 해당하지 않으므로
-              일반 기준 4.5:1 을 넘어야 하고, 6.81 은 그것을 넘어 AAA(7:1)에 근접한다.
-              종전 brand 조합은 8.88:1 이었으니 대비는 낮아지지만 기준 안쪽이다.
-            */}
-            {/* 목표 달성 여부는 GoalBadge 하나로만 말한다 — 문구·색의 단일 소스.
-                4차 개선 #3: 현재 결과가 이미 목표를 넘은 상태(currentAchieved)라면
-                같은 "이번 결과" 뱃지를 또 붙이지 않고 "적용 시에도 목표 유지"로
-                의미를 가른다. 추천이 목표에 못 미치면 뱃지를 생략한다. */}
-            {nextAction.reaches_goal && (
-              currentAchieved ? (
-                <GoalBadge size="xs" context="kept" title="현재 이미 목표를 달성했고, 이 추천을 적용해도 목표를 유지합니다" />
-              ) : (
-                <GoalBadge size="xs" />
-              )
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm mb-2.5">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-slate-500">점수:</span>
-              <span className="text-slate-600 tabular-nums">{currentScore == null ? '--' : formatScore(currentScore)}점</span>
-              <span className="text-slate-400">→</span>
-              <span className="font-bold text-slate-900 tabular-nums">{formatScore(nextAction.expected_score)}점</span>
-              <span className="text-xs font-bold text-green-700 tabular-nums">
-                {formatSigned(nextAction.expected_gain)}점
-              </span>
-            </div>
-            <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">
-              {nextAction.lever_label} {formatDelta(nextAction.delta)}
-            </span>
-          </div>
-
-          <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-2.5 rounded-md border border-slate-200">
-            {nextAction.reason}
+        <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-3">
+          <p className="text-xs font-semibold leading-relaxed text-slate-700">
+            추천 메시지와 적용 버튼은 상단 결과 카드에서 확인할 수 있어요.
           </p>
-
-          {/*
-            지금 점수를 깎고 있는 것들. 추천 행동 바로 아래에 두는 이유는,
-            "무엇을 할 것인가"와 "왜 해야 하는가"가 한 눈에 들어와야 하기 때문이다.
-            같은 목록이 아래 "왜 이 점수인가요?" 카드에도 접힌 채 남아 있고,
-            둘 다 같은 factors 배열을 그린다.
-          */}
-          {factors && factors.length > 0 && (
-            <div className="mt-2.5 pt-2.5 border-t border-slate-200">
-              <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                <h3 className="text-xs font-semibold text-slate-600">지금 점수를 깎는 요인</h3>
-                <FactorBreakdownLink />
-              </div>
-              <FactorRows factors={factors} spacing="space-y-2" />
-            </div>
-          )}
-
-          {nextAction.grid_margin_change !== 0 && (
-            <p className="text-xs mt-1.5 flex items-center gap-1.5">
-              <span className="text-slate-600">전력 공급</span>
-              <span className={`font-semibold ${nextAction.grid_margin_change > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                {formatSigned(nextAction.grid_margin_change)}
-              </span>
-            </p>
-          )}
-
-          {nextAction.resulting_grid_status === 'deficit' && (
-            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2 mt-1.5 flex items-start gap-1.5">
-              <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-px" />
-              <span>적용 후에도 전력이 부족하지만, 부족분은 줄어듭니다.</span>
-            </p>
-          )}
-
-          <button
-            onClick={() => onApply(nextAction)}
-            disabled={isCalculating}
-            title="추천 믹스를 실제 시뮬레이션에 확정 반영합니다"
-            aria-label={`추천 적용하기 — ${nextAction.lever_label} ${formatDelta(nextAction.delta)} 반영 시 ${formatScore(nextAction.expected_score)}점 예상`}
-            className="w-full mt-3 px-4 py-2.5 flex items-center justify-center gap-2 bg-brand-600 text-white text-sm font-bold rounded-md hover:bg-brand-700 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+          <a
+            href="#beginner-wizard"
+            className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-brand-700 underline underline-offset-2 hover:text-brand-900"
           >
-            {isApplying && <Spinner className="w-4 h-4" />}
-            {isApplying ? '적용 중...' : '이 추천을 시뮬레이션에 적용하기'}
-          </button>
+            위 추천 다시 보기
+            <ArrowUp className="h-3.5 w-3.5 rotate-180" aria-hidden="true" />
+          </a>
         </div>
       )}
     </div>
@@ -2043,34 +1953,17 @@ const GRID_STATUS_STYLES: Record<GridStatus, { dot: string; text: string }> = {
  */
 function ScoreRiskBadge({ score, gridStatus }: { score?: number | null; gridStatus?: GridStatus | null }) {
   const grade = beginnerGrade(score);
-  const hasRisk = gridStatus != null && gridStatus !== 'stable';
-  const riskDetail =
-    gridStatus === 'deficit' ? '(부족 위험)' : gridStatus === 'surplus' ? '(공급 과잉)' : '';
-
-  let statusText = grade.label;
-  if (hasRisk) {
-    if (score != null && score >= 70) {
-      statusText = `양호하지만 전력망 주의${riskDetail}`;
-    } else {
-      statusText = `${grade.label} · 전력망 주의${riskDetail}`;
-    }
-  }
+  const riskHint = gridStatus != null && gridStatus !== 'stable' ? ' · 전력망 경고 확인' : '';
+  const label = score == null
+    ? '--점 · 계산 중'
+    : `${formatScore(score)}점 · ${grade.label}`;
 
   return (
     <span
-      role={hasRisk ? 'alert' : undefined}
-      className={`inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold leading-snug ${
-        hasRisk
-          ? gridStatus === 'deficit'
-            ? 'border-red-300 bg-red-50 text-red-900 shadow-xs'
-            : 'border-amber-300 bg-amber-50 text-amber-900 shadow-xs'
-          : 'border-slate-200 bg-white text-slate-600'
-      }`}
+      aria-label={`${label}${riskHint}`}
+      className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold leading-snug text-slate-700"
     >
-      {hasRisk && <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-      <span className="tabular-nums">
-        {score == null ? '--' : formatScore(score)}점 · {statusText}
-      </span>
+      <span className="tabular-nums">{label}</span>
     </span>
   );
 }
@@ -2102,7 +1995,7 @@ function GridRiskAlert({ status, label, compact = false }: { status: GridStatus;
           {label}
         </span>
         <span className="mt-0.5 block text-[11px] font-medium opacity-90">
-          종합 점수와 별개로 먼저 확인하세요 — 아래 「다음 단계」가 이 리스크를 푸는 한 걸음입니다
+          종합 점수와 별개로 먼저 확인하세요 — 상단 결과 카드의 추천이 이 리스크를 푸는 한 걸음입니다
         </span>
       </span>
     </p>
@@ -2115,18 +2008,7 @@ const FACTOR_STATUS_STYLES: Record<FactorStatus, { dot: string; value: string }>
   bad: { dot: 'bg-red-500', value: 'text-red-700' },
 };
 
-/** "왜 이 점수인가요?" 카드의 앵커. "다음 단계" 카드의 링크가 이걸 가리킨다. */
-const FACTOR_BREAKDOWN_ID = 'score-factors';
-
-/**
- * "다음 단계" 카드의 앵커. 완료 카드(초보자 위자드 3단계 "다음에 해볼 일")의
- * 링크가 이걸 가리킨다.
- *
- * 추천 문구(reason)의 단일 소스는 백엔드 `results.next_action` 하나뿐이다.
- * 전체 문구 + 적용하기 버튼은 이 카드에서만 그리고, 완료 카드에서는 짧은
- * 요약 + 여기로 스크롤하는 링크만 둔다. 두 곳에 같은 문구를 전부 그리면
- * 같은 추천이 서로 다른 UI로 중복 노출된다.
- */
+/** "다음 단계" 카드의 앵커. */
 const NEXT_ACTION_CARD_ID = 'next-action';
 
 /** 완료 카드에 쓰는 한 줄 요약. 전체 reason이 아니라 축 + 변화폭만 말한다. */
@@ -2134,65 +2016,138 @@ function nextActionTeaser(action: NextAction): string {
   return `${action.lever_label} ${formatDelta(action.delta)}`;
 }
 
-/**
- * 감점 요인 세 줄(탄소 배출 / 전력망 안정 / 지역 적합도).
- *
- * 같은 목록을 두 곳이 그린다 — 기본 노출 자리인 "다음 단계" 카드와, 접힌 채로
- * 남아 있는 "왜 이 점수인가요?" 카드. 마크업을 한 곳에 두어 두 표시가 어긋나지
- * 않게 한다. 값은 백엔드 factors 를 그대로 쓰고 여기서 계산하지 않는다.
- *
- * factors 배열은 백엔드가 carbon → grid → fit 순서로 보장하므로 정렬하지 않는다.
- */
-function FactorRows({ factors, spacing = 'space-y-3' }: { factors: Factor[]; spacing?: string }) {
+
+type ScoreEvidenceTab = 'flow' | 'pipeline' | 'interpretation' | 'factors';
+
+const SCORE_EVIDENCE_TABS: Array<{ id: ScoreEvidenceTab; label: string }> = [
+  { id: 'flow', label: '계산이 이렇게 이어져요' },
+  { id: 'pipeline', label: '시뮬레이션 파이프라인' },
+  { id: 'interpretation', label: '결과 해석' },
+  { id: 'factors', label: '왜 이 점수인가요?' },
+];
+
+function FactorRows({ factors }: { factors?: Factor[] | null }) {
+  if (!factors || factors.length === 0) {
+    return <p className="text-sm text-slate-500">계산 중...</p>;
+  }
+
   return (
-    <div className={spacing}>
+    <ul className="divide-y divide-slate-100">
       {factors.map((factor) => (
-        <div key={factor.key}>
-          <div className="flex justify-between items-center gap-2">
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${FACTOR_STATUS_STYLES[factor.status].dot}`} />
-              <span className="text-sm font-semibold text-slate-800">{factor.label}</span>
-            </div>
-            <span className={`text-sm font-bold shrink-0 ${
-              factor.penalty > 0 ? FACTOR_STATUS_STYLES[factor.status].value : 'text-slate-500'
-            }`}>
-              {factor.penalty > 0 ? `-${Number(factor.penalty.toFixed(1))}점` : '0점'}
-            </span>
-          </div>
-          <p className="text-xs text-slate-600 leading-relaxed mt-1 pl-4">
-            {factor.detail}
-          </p>
-        </div>
+        <li key={factor.name} className="flex items-center gap-2 py-2">
+          <span className={`h-2 w-2 shrink-0 rounded-full ${FACTOR_STATUS_STYLES[factor.status].dot}`} />
+          <span className="min-w-0 flex-1 text-xs text-slate-700">
+            <span className="font-semibold text-slate-900">{factor.label}</span>
+            <span className="ml-1 tabular-nums">{formatDelta(factor.value)}</span>
+          </span>
+          <span className={`shrink-0 text-[11px] font-semibold ${FACTOR_STATUS_STYLES[factor.status].value}`}>
+            {factor.status === 'good' ? '개선' : factor.status === 'warn' ? '주의' : '감점'}
+          </span>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
-/**
- * "왜 이 점수인가요?" 카드로 보내는 링크.
- *
- * 아코디언은 자체 state 를 가지므로, 링크에서 trigger 버튼을 눌러 열고 같은
- * 컴포넌트가 열림 위치로 스크롤한다.
- */
-function FactorBreakdownLink() {
+function ScoreEvidenceAccordion({
+  factors,
+  score,
+  gridStatus,
+}: {
+  factors?: Factor[] | null;
+  score?: number | null;
+  gridStatus?: GridStatus | null;
+}) {
+  const [activeTab, setActiveTab] = useState<ScoreEvidenceTab>('flow');
+
   return (
-    <a
-      href={`#${FACTOR_BREAKDOWN_ID}`}
-      onClick={() => {
-        const el = document.getElementById(FACTOR_BREAKDOWN_ID);
-        const trigger = el?.querySelector('button');
-        if (trigger?.getAttribute('aria-expanded') !== 'true') trigger?.click();
-        else el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }}
-      className="text-[11px] font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800 shrink-0"
+    <Accordion
+      id="score-evidence"
+      className="bg-white shadow-card rounded-lg"
+      triggerClassName="p-3"
+      label={<h2 className="text-base font-semibold text-slate-900">점수 근거 보기</h2>}
     >
-      계산 근거 자세히 보기
-    </a>
+      <div className="px-3 pb-3">
+        <div className="mb-3 flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="점수 근거">
+          {SCORE_EVIDENCE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`shrink-0 border-b-2 px-2 py-1.5 text-xs font-semibold whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'border-brand-500 text-brand-700'
+                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'flow' && <CalculationFlow />}
+        {activeTab === 'pipeline' && (
+          <div className="space-y-3 text-xs leading-relaxed text-slate-700">
+            <p>지역과 발전원 선택을 출발점으로, 배출강도·공급마진·지역 적합도를 계산해 종합 점수와 다음 행동을 만듭니다.</p>
+            <ol className="grid gap-2 sm:grid-cols-2">
+              <li className="rounded-md bg-slate-50 p-2">
+                <span className="font-bold text-slate-900">1. 입력</span>
+                <span className="ml-1">지역, 에너지 믹스, 기후 조건</span>
+              </li>
+              <li className="rounded-md bg-slate-50 p-2">
+                <span className="font-bold text-slate-900">2. 추정</span>
+                <span className="ml-1">배출강도와 공급 여력을 계산</span>
+              </li>
+              <li className="rounded-md bg-slate-50 p-2">
+                <span className="font-bold text-slate-900">3. 조합</span>
+                <span className="ml-1">지역 적합도와 함께 가중 합산</span>
+              </li>
+              <li className="rounded-md bg-slate-50 p-2">
+                <span className="font-bold text-slate-900">4. 제안</span>
+                <span className="ml-1">점수, 위험, 다음 행동 생성</span>
+              </li>
+            </ol>
+            <a href="#section-pipeline" className="font-semibold text-brand-700 hover:text-brand-800">아래 상세 파이프라인 보기</a>
+          </div>
+        )}
+        {activeTab === 'interpretation' && (
+          <div className="space-y-3 text-xs leading-relaxed text-slate-700">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-md border border-red-200 bg-red-50 p-2 text-center">
+                <p className="font-bold text-red-800">0–40</p>
+                <p className="mt-0.5">긴급 개선</p>
+              </div>
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-center">
+                <p className="font-bold text-amber-800">41–70</p>
+                <p className="mt-0.5">개선 여지</p>
+              </div>
+              <div className="rounded-md border border-green-200 bg-green-50 p-2 text-center">
+                <p className="font-bold text-green-800">71–100</p>
+                <p className="mt-0.5">양호</p>
+              </div>
+            </div>
+            {typeof score === 'number' && (
+              <p>현재 점수는 <strong className="tabular-nums">{Math.round(score)}</strong>점이며, 전력망 안정도({gridStatus === 'stable' ? '안정' : gridStatus === 'deficit' ? '부족 위험' : '주의'})는 별도 위험으로 표시합니다.</p>
+            )}
+            <p className="text-slate-500">점수는 세 지표의 가중합입니다. 절대적인 발전량 실측값이 아니라 선택한 시나리오를 비교하기 위한 추정 지표입니다.</p>
+          </div>
+        )}
+        {activeTab === 'factors' && (
+          <div>
+            <FactorRows factors={factors} />
+            <p className="mt-2.5 border-t border-slate-200 pt-2 text-[11px] leading-snug text-slate-500">
+              ※ 이 값들은 배출강도·공급마진·지역 적합도를 가중 합산한 계산 결과입니다. AI가 생성한 문장이 아니며 같은 설정이면 항상 같은 값이 나옵니다.
+            </p>
+          </div>
+        )}
+      </div>
+    </Accordion>
   );
 }
 
 /**
- * 데이터 출처 — 페이지 최하단 각주 블록.
  *
  * 이 화면은 다섯 개의 외부 API 를 쓰는데, 그 사실이 지금까지 화면 어디에도 없었다.
  * 카드마다 붙은 ※ 각주들은 "이 값은 추정 시뮬레이션값"이라고 말할 뿐, 무엇이
@@ -2460,57 +2415,6 @@ function DataSources() {
   );
 }
 
-/**
- * 점수 귀인. "무엇이 내 점수를 깎았나"에 답한다.
- *
- * 이 세 줄의 기본 노출 자리는 이제 "다음 단계" 카드다 — 감점 요인은 그 자체로
- * 읽히기보다 "그래서 무엇을 할 것인가" 바로 옆에 있을 때 쓸모가 있고, 별도 카드로
- * 떨어져 있으면 추천을 보는 동안 시야에 없었다. 이 카드는 접힌 채로 남아 계산
- * 근거를 다시 펼쳐볼 자리 역할만 한다(Accordion 은 기본 닫힘).
- *
- * 접힘/펼침은 공통 Accordion 으로 처리해 높이·투명도 전환과 스크롤 동작을 통일한다.
- */
-function FactorBreakdown({ factors }: { factors?: Factor[] | null }) {
-  return (
-    /*
-      h-full 을 뺐다. 이 카드는 이제 칸을 혼자 쓰지 않는다 — 아래에 기상이 박스가
-      함께 들어가고, 칸을 채우는 일은 그 박스(flex-1)가 맡는다. 여기서 h-full 을
-      들고 있으면 카드가 칸 높이를 전부 먹어 박스가 밀려난다.
-
-      shrink-0: 접혔을 때든 펼쳤을 때든 이 카드는 자기 콘텐츠 높이를 지킨다. 칸에
-      자리가 모자랄 때 눌려서 글이 잘리는 쪽이 아니라, 아래 박스가 줄어드는 쪽이다.
-    */
-    <Accordion id={FACTOR_BREAKDOWN_ID} className="shrink-0 bg-white rounded-lg shadow-card" triggerClassName="p-3" label={<h2 className="text-base font-semibold text-slate-900">왜 이 점수인가요?</h2>}>
-
-      <div className="px-3 pb-3">
-        {!factors || factors.length === 0 ? (
-          <p className="text-sm text-slate-500">계산 중...</p>
-        ) : (
-          <FactorRows factors={factors} />
-        )}
-
-        {/*
-          이 카드에 "AI 가 생성했습니다" 를 적지 않는다 — 적으면 거짓이 된다.
-
-          여기 세 줄은 백엔드 score_factors() 가 배출강도·공급마진·적합도에서 가중합으로
-          계산한 값이고, 그 경로에 LLM 이 없다. 같은 입력이면 언제나 같은 값이 나온다.
-          AI 가 만드는 것은 우하단 어시스턴트의 해설과 채팅 답변뿐이다.
-
-          그래서 여기서는 반대쪽을 밝힌다. 화면에 AI 생성물이 섞여 있다는 것을 사용자가
-          알아야 한다면, 어느 것이 AI 가 아닌지도 같이 알아야 한다 — 고지가 한쪽에만
-          붙어 있으면 나머지 전부의 성격이 불확실해진다.
-        */}
-        <p className="mt-2.5 pt-2 border-t border-slate-200 text-[11px] text-slate-500 leading-snug">
-          ※ 이 세 줄은 배출강도·공급마진·지역 적합도를 가중 합산한 계산 결과입니다.
-          AI 가 생성한 문장이 아니며, 같은 설정이면 항상 같은 값이 나옵니다.
-          AI 가 작성하는 것은 우측 하단 <span className="font-medium text-slate-600">AI 어시스턴트</span>의
-          해설과 채팅 답변이며, 그 답변은 OpenRouter를 통한 AI 모델로 생성됩니다.
-        </p>
-      </div>
-    </Accordion>
-  );
-}
-
 /*
  * 상세 대시보드 섹션 내비게이션(3순위).
  *
@@ -2553,18 +2457,14 @@ function DetailSectionNav() {
 function CalculationFlow() {
   const steps = [
     { number: '01', title: '입력', detail: '지역 · 날씨 · 에너지 믹스' },
-    { number: '02', title: '실제 발전량', detail: '믹스 × 지역 계수 × 기상 배수' },
+    { number: '02', title: '발전량 추정', detail: '믹스 × 지역 계수 × 기상 배수' },
     { number: '03', title: '영향 계산', detail: '탄소 배출 · 공급과 수요 · 지역 적합도' },
     { number: '04', title: '종합 점수', detail: '탄소 55% · 전력망 30% · 적합도 15%' },
   ];
 
   return (
-    <section aria-labelledby="calculation-flow-heading" className="bg-white rounded-lg shadow-card p-4 sm:p-5">
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-        <h2 id="calculation-flow-heading" className="text-lg font-bold tracking-tight text-slate-900">계산이 이렇게 이어져요</h2>
-        <p className="text-xs text-slate-600">화면의 숫자는 아래 순서로 같은 입력에서 계산됩니다</p>
-      </div>
-      <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+    <div>
+      <ol className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {steps.map((step) => (
           <li key={step.number} className="min-w-0 rounded-md bg-slate-50 px-3 py-3">
             <div className="flex items-center gap-2">
@@ -2576,9 +2476,9 @@ function CalculationFlow() {
         ))}
       </ol>
       <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-        적합도 카드와 `왜 이 점수인가요?`를 펼치면 현재 결과에 사용된 항 단위 숫자와 근거를 확인할 수 있습니다.
+        같은 입력에서 계산되는 순서입니다. 「왜 이 점수인가요?」 탭에서 현재 결과의 항별 숫자와 근거도 확인할 수 있습니다.
       </p>
-    </section>
+    </div>
   );
 }
 
@@ -2650,20 +2550,12 @@ function SimulationSummaryCard({
   results,
   isCalculating,
   nextAction,
-  onApply,
 }: {
   mix: EnergyMixValues;
   onSliderChange: (type: MixKey, value: string) => void;
   results: SimulationResult | null;
   isCalculating: boolean;
-  /**
-   * 상단 요약 CTA(개선 #3): "이 추천을 시뮬레이션에 적용하기"를 하단
-   * 「다음 단계」 카드에만 두면 스크롤해야 보이므로, 요약 카드(핵심 요약)에도
-   * 같은 추천의 짧은 요약 + 적용 버튼을 둔다. 문구 단일 소스는 여전히
-   * results.next_action 하나이며, 여기서 새로 만들지 않는다.
-   */
   nextAction?: NextAction | null;
-  onApply?: (action: NextAction) => void;
 }) {
   return (
     <div className={`h-full p-3 rounded-lg shadow-card border transition-colors ${
@@ -2815,34 +2707,18 @@ function SimulationSummaryCard({
         {/* Level Stepper */}
         <LevelStepper level={results?.level} />
 
-        {/*
-          상단 요약 CTA(개선 #3): 하단 「다음 단계」 카드의 적용 버튼을
-          스크롤 없이도 누르게 요약 카드에 같은 추천의 압축본을 둔다.
-          전체 문구(reason)는 하단 카드가 계속 들고 있고, 여기서는
-          한 줄 티저(nextActionTeaser) + 적용 버튼만 둔다.
-        */}
-        {nextAction && onApply && (
-          <div className="mt-2.5 rounded-md border border-brand-200 bg-brand-50/60 p-2.5">
-            <p className="text-[11px] font-bold text-slate-700 leading-snug">
+        {/* 추천 적용은 상단 히어로에서만 제공하고, 아래에서는 같은 추천으로 돌아가는 링크만 둔다. */}
+        {nextAction && (
+          <div className="mt-2.5 flex items-center justify-between gap-2 rounded-md border border-brand-200 bg-brand-50/60 p-2.5">
+            <p className="min-w-0 text-[11px] font-bold text-slate-700 leading-snug">
               다음 한 걸음 · {nextActionTeaser(nextAction)}
             </p>
-            <p className="mt-1 text-[11px] text-slate-600 tabular-nums">
-              적용 전 {results?.sustainability_score == null ? '--' : formatScore(results.sustainability_score)}점
-              {' → '}
-              적용 후 {formatScore(nextAction.expected_score)}점 ({formatSigned(nextAction.expected_gain)}점)
-            </p>
-            <p className="mt-0.5 text-[11px] font-semibold text-brand-800 tabular-nums">
-              조정 내용: {nextAction.lever_label} {formatDelta(nextAction.delta)}
-            </p>
-            <button
-              type="button"
-              onClick={() => onApply(nextAction)}
-              disabled={isCalculating}
-              aria-label={`추천 적용하기 — ${nextAction.lever_label} ${formatDelta(nextAction.delta)} 반영 시 ${formatScore(nextAction.expected_score)}점 예상`}
-              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-brand-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+            <a
+              href="#beginner-wizard"
+              className="shrink-0 text-[11px] font-bold text-brand-700 underline underline-offset-2 hover:text-brand-900"
             >
-              이 추천을 시뮬레이션에 적용하기
-            </button>
+              위 추천 다시 보기
+            </a>
           </div>
         )}
       </div>
@@ -2952,18 +2828,25 @@ function TeacherLinkButton({ shareUrl }: { shareUrl: string }) {
   );
 }
 
+function scoreToneClasses(score?: number | null) {
+  if (score == null) return { background: 'bg-slate-100', ring: 'ring-slate-200' };
+  if (score <= 40) return { background: 'bg-red-50', ring: 'ring-red-200' };
+  if (score <= 70) return { background: 'bg-amber-50', ring: 'ring-amber-200' };
+  return { background: 'bg-emerald-50', ring: 'ring-emerald-200' };
+}
+
 function beginnerGrade(score?: number | null) {
   if (score == null) return { label: '계산 중', tone: 'neutral', message: '내 선택이 어떤 변화를 만드는지 곧 보여드릴게요.' };
   if (score >= 85) return { label: '아주 좋아요', tone: 'good', message: '지구가 편안해하는 조합이에요!' };
-  if (score >= 70) return { label: '좋아요', tone: 'good', message: '좋은 방향이에요. 한 걸음 더 가볼까요?' };
-  if (score >= 40) return { label: '조금 아쉬워요', tone: 'warn', message: '재생에너지를 조금 더 늘려 볼까요?' };
+  if (score >= 71) return { label: '좋아요', tone: 'good', message: '좋은 방향이에요. 한 걸음 더 가볼까요?' };
+  if (score >= 41) return { label: '보통이에요', tone: 'warn', message: '에너지 조합을 조금만 바꿔볼까요?' };
   return { label: '도전 중', tone: 'bad', message: '괜찮아요. 슬라이더를 움직이며 답을 찾아봐요.' };
 }
 
 function beginnerMood(score?: number | null) {
   if (score == null) return 'ready';
-  if (score >= 70) return 'happy';
-  if (score >= 40) return 'thinking';
+  if (score >= 71) return 'happy';
+  if (score >= 41) return 'thinking';
   return 'concerned';
 }
 
@@ -3055,6 +2938,32 @@ function BeginnerClimateScene({ score }: { score?: number }) {
         <p className="text-[11px] font-medium leading-tight text-white/75">선택에 따라 변해요</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * 3단계 결과 화면용 소형 기분 배지.
+ *
+ * BeginnerClimateScene(하늘 씬)의 축소판이 아니라 별개 컴포넌트다. 씬을
+ * scale() 로 줄이면 내부 절대좌표 레이어(태양·구름·언덕)가 함께 깨지기
+ * 쉬워 유지보수 부담이 크고, 결과 화면에서는 그 정도 디테일이 필요하지도
+ * 않다. 색 + 한 줄 문구로 같은 "내 선택이 반영된다"는 감각만 남긴다.
+ */
+function MoodBadge({ score }: { score?: number }) {
+  const mood = beginnerMood(score);
+  const label = mood === 'happy'
+    ? '맑고 가벼운 하늘'
+    : mood === 'concerned'
+      ? '조금 무거운 하늘'
+      : mood === 'thinking'
+        ? '변화 중인 하늘'
+        : '하늘을 살펴보는 중';
+
+  return (
+    <span className={`mood-badge mood-badge-${mood}`} role="status">
+      <span className="mood-badge-dot" aria-hidden="true" />
+      {label}
+    </span>
   );
 }
 
@@ -3372,8 +3281,12 @@ function BeginnerWizard({
           )}
         </div>
 
-        <div className="flex min-h-[250px] flex-col justify-end gap-4">
-          <BeginnerClimateScene score={results?.sustainability_score} />
+        <div className={`flex flex-col justify-end gap-4 ${step === 3 ? 'min-h-[80px]' : 'min-h-[250px]'}`}>
+          {step === 3 ? (
+            <MoodBadge score={results?.sustainability_score} />
+          ) : (
+            <BeginnerClimateScene score={results?.sustainability_score} />
+          )}
           <div className="flex items-end gap-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
             <Image src="/images/gisangi-hello.png" alt="기상이" width={82} height={82} className={`h-20 w-20 shrink-0 object-contain transition-transform duration-300 ${mood === 'happy' ? '-rotate-6' : mood === 'concerned' ? 'rotate-6' : ''}`} />
             <div className="relative rounded-2xl bg-[#e8f7ee] px-4 py-3 text-sm font-bold leading-relaxed text-slate-700">
@@ -5092,7 +5005,6 @@ export default function Home() {
               results={results}
               isCalculating={isCalculating}
               nextAction={results?.next_action}
-              onApply={handleApplyNextAction}
             />
 
             {/* Next Action */}
@@ -5101,8 +5013,6 @@ export default function Home() {
               currentScore={results?.sustainability_score}
               isCalculating={isCalculating}
               appliedTarget={appliedTarget}
-              onApply={handleApplyNextAction}
-              factors={results?.factors}
             />
 
             {/*
@@ -5125,7 +5035,11 @@ export default function Home() {
               계속 일직선이다.
             */}
             <div className="flex flex-col gap-2">
-              <FactorBreakdown factors={results?.factors} />
+              <ScoreEvidenceAccordion
+                factors={results?.factors}
+                score={results?.sustainability_score}
+                gridStatus={results?.grid?.status}
+              />
               <GisangiGreeting />
             </div>
           </div>

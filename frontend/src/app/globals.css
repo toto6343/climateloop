@@ -345,3 +345,50 @@ input[type='number'] {
   padding: 0 4px;
 }
 
+/*
+ * 3단계 결과 화면용 소형 기분 배지.
+ *
+ * 1·2단계의 .climate-scene(태양·구름·언덕 풀 씬)을 그대로 축소하지 않고
+ * 별도로 둔다. 결과 화면은 이미 점수·배지·퀴즈로 정보가 많아, 같은 크기의
+ * 일러스트를 유지하면 시선이 분산된다. 초/중등 학습자에게 "내 선택이
+ * 반영된다"는 감각은 색상 한 가지만으로도 충분히 전달된다고 보고,
+ * 형태는 원형 아이콘 칩 하나로 단순화한다.
+ */
+.mood-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  transition: background 400ms ease, color 400ms ease;
+}
+
+.mood-badge-happy {
+  background: #d2f5dc;
+  color: #166534;
+}
+
+.mood-badge-thinking {
+  background: #e8f4e5;
+  color: #3f6212;
+}
+
+.mood-badge-concerned {
+  background: #eef1e9;
+  color: #57534e;
+}
+
+.mood-badge-ready {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.mood-badge-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+}
